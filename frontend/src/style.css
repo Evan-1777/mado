@@ -87,54 +87,19 @@ body {
   align-items: center;
   height: 100%;
   min-width: 0;
+  padding-left: 16px;
 }
 
 /* Interactive children must opt out of drag (custom property inherits). */
-.titlebar .traffic-lights,
 .titlebar .titlebar-actions,
 .titlebar .icon-btn,
-.titlebar .dot {
+.titlebar .win-controls,
+.titlebar .win-btn {
   --wails-draggable: none;
 }
 
 .titlebar .title {
   pointer-events: none;
-}
-
-.traffic-lights {
-  display: flex;
-  gap: 8px;
-  padding-left: 16px;
-  align-items: center;
-}
-
-.traffic-lights .dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  transition: transform 0.15s ease, filter 0.15s ease;
-  cursor: pointer;
-  border: none;
-}
-
-.traffic-lights .dot:active {
-  transform: scale(0.85);
-}
-
-.traffic-lights .dot.close {
-  background: var(--red);
-}
-.traffic-lights .dot.min {
-  background: var(--yellow);
-}
-.traffic-lights .dot.max {
-  background: var(--green);
-}
-
-.titlebar .title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   font-size: 12.5px;
   letter-spacing: 0.04em;
   color: var(--text-dim);
@@ -142,15 +107,61 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 45%;
-  pointer-events: none;
 }
 
 .titlebar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-right: 14px;
+  padding-right: 10px;
   margin-left: auto;
+}
+
+/* ============ Windows 11 native caption buttons ============ */
+
+/* Full-height right edge, mirroring the native Win11 caption layout. */
+.win-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 0 0 auto;
+}
+
+.win-btn {
+  width: 46px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s ease;
+}
+
+.win-btn svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.win-btn:hover {
+  background: var(--surface-hover);
+}
+
+.win-btn:active {
+  background: var(--surface-hover);
+  filter: brightness(0.9);
+}
+
+/* Win11 style: close hover is a solid red fill with a white glyph. */
+.win-close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+.win-close:active {
+  background: #b02213;
+  filter: none;
 }
 
 .icon-btn {
@@ -248,11 +259,14 @@ body {
   min-height: 0;
 }
 
-.pane.editor-only .editor-col {
-  flex: 1 1 100%;
+/* Editor-only: hide the preview column. */
+.pane.editor-only .preview-col {
+  display: none;
 }
-.pane.preview-only .preview-col {
-  flex: 1 1 100%;
+
+/* Preview-only: hide the editor column. */
+.pane.preview-only .editor-col {
+  display: none;
 }
 
 .editor-col,

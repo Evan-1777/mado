@@ -7,9 +7,9 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, QuitApp, OpenFileDialog, ConfirmDiscard,
+  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty, QuitApp, OpenFileDialog, ConfirmDiscard,
 } from '../wailsjs/go/main/App';
-import { WindowMinimise, WindowToggleMaximise, WindowSetTitle, OnFileDrop } from '../wailsjs/runtime/runtime';
+import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop } from '../wailsjs/runtime/runtime';
 
 // ---------------------------------------------------------------- helpers
 
@@ -36,20 +36,26 @@ const app = document.getElementById('app')!;
 
 // ---------------------------------------------------------------- build UI
 
+// Segoe Fluent glyphs mirroring the Windows 11 caption buttons.
+const GLYPH_MIN = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg>';
+const GLYPH_MAX = '<svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor"/></svg>';
+const GLYPH_RESTORE = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 2.5V.5h7v7h-2" fill="none" stroke="currentColor"/><rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor"/></svg>';
+const GLYPH_CLOSE = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.1"/></svg>';
+
 const titlebar = document.createElement('header');
 titlebar.className = 'titlebar';
 titlebar.innerHTML = `
-  <div class="traffic-lights">
-    <button class="dot close" title="Close" aria-label="Close"></button>
-    <button class="dot min" title="Minimise" aria-label="Minimise"></button>
-    <button class="dot max" title="Maximise" aria-label="Maximise"></button>
-  </div>
   <div class="drag-zone"><span class="title" id="title">Mado</span></div>
   <div class="titlebar-actions">
     <button class="icon-btn" id="btn-open" title="Open file (Ctrl+O)"><span class="glyph">\u2190</span><span>Open</span></button>
     <button class="icon-btn" id="btn-save" title="Save (Ctrl+S)"><span class="glyph">\u21e7</span><span>Save</span></button>
     <button class="icon-btn" id="btn-new" title="New file (Ctrl+N)"><span class="glyph">+</span><span>New</span></button>
     <button class="icon-btn" id="btn-theme" title="Toggle theme"><span class="glyph">\u25d0</span><span>Theme</span></button>
+  </div>
+  <div class="win-controls">
+    <button class="win-btn win-min" title="Minimise" aria-label="Minimise"></button>
+    <button class="win-btn win-max" title="Maximise" aria-label="Maximise"></button>
+    <button class="win-btn win-close" title="Close" aria-label="Close"></button>
   </div>
 `;
 
@@ -149,7 +155,7 @@ const editorState = EditorState.create({
     ]),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
-        dirty = true;
+        setDirty(true);
         scheduleRender();
       }
     }),
@@ -218,10 +224,18 @@ function setTitle(name: string) {
   void WindowSetTitle(`Mado — ${name}`);
 }
 
+function setDirty(v: boolean) {
+  if (dirty === v) return; // edge-triggered: only notify Go on transitions
+  dirty = v;
+  void SetDirty(v);
+}
+
 async function loadContent(path: string, content: string) {
   currentFile = path;
-  dirty = false;
+  // Dispatch first: the updateListener fires synchronously on docChanged and
+  // would otherwise re-mark the freshly loaded file as dirty.
   cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: content } });
+  setDirty(false);
   setTitle(baseName(path));
   statusEl.textContent = 'Ready';
   await refreshPreview();
@@ -244,7 +258,7 @@ async function saveCurrent() {
   const content = cm.state.doc.toString();
   try {
     await SaveFile(currentFile, content);
-    dirty = false;
+    setDirty(false);
     statusEl.textContent = 'Saved';
   } catch (err) {
     console.error(err);
@@ -256,8 +270,8 @@ async function newFile() {
   const ok = await confirmDiscard();
   if (!ok) return;
   currentFile = '';
-  dirty = false;
   cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: '' } });
+  setDirty(false);
   setTitle('untitled');
   statusEl.textContent = 'Ready';
   await refreshPreview();
@@ -272,11 +286,29 @@ async function confirmDiscard(): Promise<boolean> {
 
 // Native open-file dialog is exposed as a Go binding (OpenFileDialog).
 
-// ---------------------------------------------------------------- traffic lights
+// ---------------------------------------------------------------- window chrome
 
-titlebar.querySelector('.dot.close')!.addEventListener('click', () => { void QuitApp(); });
-titlebar.querySelector('.dot.min')!.addEventListener('click', () => { WindowMinimise(); });
-titlebar.querySelector('.dot.max')!.addEventListener('click', () => { WindowToggleMaximise(); });
+// Populate the Segoe Fluent glyphs (inline SVG) for the caption buttons.
+function setWinGlyphs(maximised: boolean) {
+  const min = document.querySelector<HTMLElement>('.win-min')!;
+  const max = document.querySelector<HTMLElement>('.win-max')!;
+  const close = document.querySelector<HTMLElement>('.win-close')!;
+  min.innerHTML = GLYPH_MIN;
+  max.innerHTML = maximised ? GLYPH_RESTORE : GLYPH_MAX;
+  close.innerHTML = GLYPH_CLOSE;
+}
+
+// Caption buttons: unlike the old custom dots, these drive the native window
+// commands. Close calls QuitApp(), which routes through quitConfirm() and then
+// runtime.Quit(); that path posts WM_QUIT and actually exits the process.
+titlebar.querySelector('.win-min')!.addEventListener('click', () => { WindowMinimise(); });
+titlebar.querySelector('.win-max')!.addEventListener('click', async () => {
+  const wasMax = await WindowIsMaximised();
+  setWinGlyphs(!wasMax);
+  if (wasMax) WindowUnmaximise(); else WindowMaximise();
+});
+titlebar.querySelector('.win-close')!.addEventListener('click', () => { void QuitApp(); });
+setWinGlyphs(false);
 
 // ---------------------------------------------------------------- toolbar actions
 

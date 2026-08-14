@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1 核心闭环已交付，待用户手动验收 GUI 行为）
+- **当前阶段**：开发中（v1.1 GUI 修复中：Win11 原生窗控、关闭/模式切换修复，待云端 CI 验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -39,6 +39,7 @@
   - 开发：`wails dev`（wails CLI 在 `$(go env GOPATH)/bin`，需在 PATH 中；本机已 `go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
   - 打包：`wails build` → `build/bin/mado.exe`
   - ★ 易错：`wails build` 会先跑 `frontend:install`（pnpm install）与 `frontend:build`（pnpm build），node_modules 缺失时自动补装
+  - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + pnpm + Node 22 + wails CLI v2.14.0 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。SCOPE 约定不在本机构建，验收以云端 workflow 结果为准；本机仅允许前端 esbuild 语法验证。
 - **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证（Plan §5 验收走查）
 
 ## 3. 目录结构与模块职责
@@ -68,6 +69,8 @@ docs/                    # 用户文档
 - **数据流**：
   - 启动：main.go → wails.Run → 前端加载 → `GetSettings`（主题）→ `GetWelcome`（lastfile 或欢迎文档）→ 编辑器显示
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 重建 iframe srcdoc
+  - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
+  - 关闭：标题栏关闭钮 → `QuitApp()` → Go `quitConfirm()`：未保存修改（dirty）时弹原生确认框，否则直接 `runtime.Quit()` 退出；Alt+F4/任务栏关闭走 `OnBeforeClose`，同一套逻辑
   - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动
 - **模块依赖**：
   - `internal/*` 禁止互相依赖（filesys/settings 仅通过共享 JSON 文件松耦合，禁止 import 对方）
@@ -84,6 +87,8 @@ docs/                    # 用户文档
 ## 6. 约束与已知坑
 
 - 「SCOPE.md 禁止本机编译 Go、Rust——原因：本地曾无环境，避免占用空间」——**已过时**：本机已确认 Go 1.25.3 + Rust 1.91.1 已安装，且 Go 方案被用户选定，本机编译 Go 是常态操作。Rust 仍未使用。
+- 「Windows 构建产物验收在云端——原因：SCOPE 约定不占用本机空间做全量构建，CI workflow 产出 exe artifact，由用户在云端触发并下载验收；本机仅允许前端 esbuild 语法验证（`node_modules/.bin/esbuild src/main.ts --bundle` 不产构建物）」
+- 「wailsjs 生成绑定需与 Go 导出方法同步——原因：`frontend/wailsjs/` 在 `wails dev/build` 时自动重新生成覆盖，但仓库内提交的副本用于本地 esbuild 语法检查；新增 Go 绑定方法（如 SetDirty）时必须同步手补 App.js/App.d.ts 以便本地验证，CI 生成版本以 Go 为准」
 - 「`frontend/dist/` 是 go:embed 的 FS 根——原因：`main.go` 用 `//go:embed all:frontend/dist`，HTML 内引用资源必须写 `./app.js`/`./app.css` 而非 `./dist/app.js`」——此为 v1 打包期真实踩坑，修复后写死约定
 - 「`frontend/wailsjs/` 由 wails 自动生成，禁止手改——原因：每次 wails dev/build 会重新生成覆盖」
 - 「`frontend/dist/` 构建产物禁止提交——原因：每次 pnpm build 全量重建，且 go:embed 编译时读取」

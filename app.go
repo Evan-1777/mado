@@ -21,6 +21,7 @@ import (
 type App struct {
 	ctx      context.Context
 	settings settings.Settings
+	dirty    bool
 }
 
 // NewApp creates the application instance.
@@ -131,16 +132,24 @@ func (a *App) ConfirmDiscard() bool {
 	return answer == "Discard"
 }
 
+// SetDirty records whether the editor has unsaved changes. It is used by
+// quitConfirm so that closing only asks for confirmation when changes
+// would be lost.
+func (a *App) SetDirty(dirty bool) {
+	a.dirty = dirty
+}
+
 // quitConfirm asks the user whether to quit; used by the title bar close
-// button and OnBeforeClose.
+// button and OnBeforeClose. Clean state quits without prompting; dirty state
+// shows a native confirmation dialog first.
 func (a *App) quitConfirm() bool {
-	if a.ctx == nil {
+	if a.ctx == nil || !a.dirty {
 		return true
 	}
 	answer, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
 		Title:         "Mado",
-		Message:       "Close Mado?",
+		Message:       "You have unsaved changes. Close anyway?",
 		Buttons:       []string{"Close", "Cancel"},
 		DefaultButton: "Cancel",
 		CancelButton:  "Cancel",
