@@ -307,6 +307,9 @@ body {
   color: var(--text-dim);
   font-size: 13px;
 }
+.placeholder[hidden] {
+  display: none;
+}
 
 /* CodeMirror theme overrides for light mode */
 :root[data-theme="light"] .cm-editor {

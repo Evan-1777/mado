@@ -318,9 +318,9 @@ document.getElementById('btn-new')!.addEventListener('click', () => { void newFi
 document.getElementById('btn-theme')!.addEventListener('click', () => { void toggleTheme(); });
 
 // Mode tabs
-pane.querySelectorAll('.seg button').forEach((btn) => {
+toolbar.querySelectorAll('.seg button').forEach((btn) => {
   btn.addEventListener('click', () => {
-    pane.querySelectorAll('.seg button').forEach((b) => b.classList.remove('active'));
+    toolbar.querySelectorAll('.seg button').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     const mode = btn.dataset.mode as 'split' | 'editor' | 'preview';
     pane.classList.remove('editor-only', 'preview-only');
