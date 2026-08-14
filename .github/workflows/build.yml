@@ -37,6 +37,10 @@ jobs:
         env:
           CGO_ENABLED: 0
 
+      - name: Build frontend (dist/ required by go:embed)
+        working-directory: frontend
+        run: pnpm install && pnpm build
+
       - name: Unit tests
         run: go test ./...
 
