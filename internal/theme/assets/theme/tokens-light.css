@@ -1,0 +1,16 @@
+/* mado theme tokens: light */
+:root {
+  --bg: #fbfbfa;
+  --fg: #34383f;
+  --muted: #8a8f98;
+  --border: #e6e8ec;
+  --accent: #3558d6;
+  --accent-soft: rgba(53, 88, 214, 0.08);
+  --code-bg: #f0f1f4;
+  --quote-bg: rgba(53, 88, 214, 0.05);
+  --quote-border: #c9d3f0;
+  --table-head: #f0f1f4;
+  --table-stripe: #f5f6f8;
+  --link: #3558d6;
+  --heading: #1d2127;
+}

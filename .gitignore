@@ -1,0 +1,8 @@
+node_modules/
+build/
+dist/
+frontend/node_modules/
+*.exe
+.env
+.env.*
+!.env.example

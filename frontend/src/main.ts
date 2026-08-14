@@ -1,0 +1,338 @@
+import './style.css';
+import { EditorState, Compartment } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { markdown } from '@codemirror/lang-markdown';
+import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language';
+import { oneDark } from '@codemirror/theme-one-dark';
+
+import {
+  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, QuitApp, OpenFileDialog, ConfirmDiscard,
+} from '../wailsjs/go/main/App';
+import { WindowMinimise, WindowToggleMaximise, WindowSetTitle, OnFileDrop } from '../wailsjs/runtime/runtime';
+
+// ---------------------------------------------------------------- helpers
+
+function baseName(p: string): string {
+  const parts = p.split(/[\\/]/);
+  return parts[parts.length - 1] || p;
+}
+
+// ---------------------------------------------------------------- state
+
+interface Settings {
+  Theme: string;
+}
+
+let currentTheme: 'dark' | 'light' = 'dark';
+let currentFile = '';
+let dirty = false;
+let renderVersion = 0;         // guards against out-of-order fetch responses
+let previewCss = '';           // cached preview stylesheet for current theme
+
+// ---------------------------------------------------------------- dom refs
+
+const app = document.getElementById('app')!;
+
+// ---------------------------------------------------------------- build UI
+
+const titlebar = document.createElement('header');
+titlebar.className = 'titlebar';
+titlebar.innerHTML = `
+  <div class="traffic-lights">
+    <button class="dot close" title="Close" aria-label="Close"></button>
+    <button class="dot min" title="Minimise" aria-label="Minimise"></button>
+    <button class="dot max" title="Maximise" aria-label="Maximise"></button>
+  </div>
+  <div class="drag-zone"><span class="title" id="title">Mado</span></div>
+  <div class="titlebar-actions">
+    <button class="icon-btn" id="btn-open" title="Open file (Ctrl+O)"><span class="glyph">\u2190</span><span>Open</span></button>
+    <button class="icon-btn" id="btn-save" title="Save (Ctrl+S)"><span class="glyph">\u21e7</span><span>Save</span></button>
+    <button class="icon-btn" id="btn-new" title="New file (Ctrl+N)"><span class="glyph">+</span><span>New</span></button>
+    <button class="icon-btn" id="btn-theme" title="Toggle theme"><span class="glyph">\u25d0</span><span>Theme</span></button>
+  </div>
+`;
+
+const toolbar = document.createElement('div');
+toolbar.className = 'toolbar';
+toolbar.innerHTML = `
+  <div class="seg" role="tablist">
+    <button class="active" data-mode="split" role="tab">Split</button>
+    <button data-mode="editor" role="tab">Editor</button>
+    <button data-mode="preview" role="tab">Preview</button>
+  </div>
+  <div class="status"><span class="dot"></span><span id="status-text">Ready</span></div>
+`;
+
+const pane = document.createElement('main');
+pane.className = 'pane';
+pane.innerHTML = `
+  <section class="editor-col">
+    <div class="editor-wrap" id="editor-host"></div>
+  </section>
+  <section class="preview-col">
+    <iframe class="preview-frame" id="preview" sandbox="allow-same-origin" title="Preview"></iframe>
+    <div class="placeholder" id="preview-empty" hidden>No preview</div>
+  </section>
+`;
+
+app.append(titlebar, toolbar, pane);
+
+const titleEl = document.getElementById('title')!;
+const statusEl = document.getElementById('status-text')!;
+const editorHost = document.getElementById('editor-host')!;
+const previewIframe = document.getElementById('preview') as HTMLIFrameElement;
+const previewEmpty = document.getElementById('preview-empty')!;
+
+// ---------------------------------------------------------------- theme
+
+function applyTheme(theme: 'dark' | 'light') {
+  currentTheme = theme;
+  document.documentElement.dataset.theme = theme;
+  // CodeMirror theme: swap compartments
+  if (cm) {
+    cm.dispatch({ effects: themeCompartment.reconfigure(theme === 'dark' ? [oneDark] : [lightSyntax]) });
+  }
+  previewCss = ''; // invalidate cached stylesheet so preview follows theme
+  void refreshPreview();
+}
+
+// Light syntax highlighting for CodeMirror (dark default is oneDark).
+const lightSyntax = EditorView.theme({
+  '&': { backgroundColor: '#fbfbfa', color: '#34383f' },
+  '.cm-content': { caretColor: '#3558d6' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#3558d6' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'rgba(53, 88, 214, 0.18)',
+  },
+}, { dark: false });
+
+async function toggleTheme() {
+  const next: 'dark' | 'light' = currentTheme === 'dark' ? 'light' : 'dark';
+  try {
+    await SetTheme(next);
+    applyTheme(next);
+  } catch (err) {
+    console.error('SetTheme failed', err);
+  }
+}
+
+// ---------------------------------------------------------------- CodeMirror
+
+const themeCompartment = new Compartment();
+
+const editorState = EditorState.create({
+  doc: '',
+  extensions: [
+    lineNumbers(),
+    highlightActiveLine(),
+    drawSelection(),
+    dropCursor(),
+    rectangularSelection(),
+    crosshairCursor(),
+    bracketMatching(),
+    indentOnInput(),
+    foldGutter(),
+    syntaxHighlighting(defaultHighlightStyle),
+    markdown(),
+    history(),
+    themeCompartment.of([oneDark]),
+    keymap.of([
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...foldKeymap,
+      indentWithTab,
+      { key: 'Ctrl-s', run: () => { void saveCurrent(); return true; } },
+      { key: 'Ctrl-o', run: () => { void openFile(); return true; } },
+      { key: 'Ctrl-n', run: () => { void newFile(); return true; } },
+      { key: 'Ctrl-Shift-p', run: () => { void openFile(); return true; } },
+    ]),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        dirty = true;
+        scheduleRender();
+      }
+    }),
+  ],
+});
+
+let cm = new EditorView({ state: editorState, parent: editorHost });
+
+// ---------------------------------------------------------------- debounced render
+
+let renderTimer: number | null = null;
+let lastRenderAt = 0;
+const DEBOUNCE_MS = 100;
+const THROTTLE_MS = 80;
+
+function scheduleRender() {
+  if (renderTimer !== null) window.clearTimeout(renderTimer);
+  const now = Date.now();
+  const wait = Math.max(0, THROTTLE_MS - (now - lastRenderAt));
+  renderTimer = window.setTimeout(() => {
+    renderTimer = null;
+    void refreshPreview();
+  }, Math.max(DEBOUNCE_MS, wait));
+}
+
+async function refreshPreview() {
+  const md = cm.state.doc.toString();
+  const version = ++renderVersion;
+  try {
+    const [html, css] = await Promise.all([Render(md), cssForTheme()]);
+    if (version !== renderVersion) return; // superseded by newer input
+    previewCss = css;
+    writePreview(html);
+    statusEl.textContent = dirty ? 'Unsaved changes' : 'Ready';
+  } catch (err) {
+    console.error('render failed', err);
+    statusEl.textContent = 'Render error';
+  }
+}
+
+async function cssForTheme(): Promise<string> {
+  if (previewCss) return previewCss;
+  const css = await GetCSS();
+  return css;
+}
+
+function writePreview(html: string) {
+  const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>${previewCss}</style>
+</head>
+<body>
+<article>${html}</article>
+</body>
+</html>`;
+  previewIframe.srcdoc = doc;
+  previewEmpty.hidden = html.trim().length > 0;
+}
+
+// ---------------------------------------------------------------- file ops
+
+function setTitle(name: string) {
+  titleEl.textContent = name;
+  void WindowSetTitle(`Mado — ${name}`);
+}
+
+async function loadContent(path: string, content: string) {
+  currentFile = path;
+  dirty = false;
+  cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: content } });
+  setTitle(baseName(path));
+  statusEl.textContent = 'Ready';
+  await refreshPreview();
+}
+
+async function openFile() {
+  try {
+    const path = await OpenFileDialog();
+    if (!path) return;
+    const content = await LoadFile(path);
+    await loadContent(path, content);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Open failed';
+  }
+}
+
+async function saveCurrent() {
+  if (!currentFile) return;
+  const content = cm.state.doc.toString();
+  try {
+    await SaveFile(currentFile, content);
+    dirty = false;
+    statusEl.textContent = 'Saved';
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Save failed';
+  }
+}
+
+async function newFile() {
+  const ok = await confirmDiscard();
+  if (!ok) return;
+  currentFile = '';
+  dirty = false;
+  cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: '' } });
+  setTitle('untitled');
+  statusEl.textContent = 'Ready';
+  await refreshPreview();
+}
+
+async function confirmDiscard(): Promise<boolean> {
+  if (!dirty) return true;
+  return ConfirmDiscard();
+}
+
+// ---------------------------------------------------------------- dialogs
+
+// Native open-file dialog is exposed as a Go binding (OpenFileDialog).
+
+// ---------------------------------------------------------------- traffic lights
+
+titlebar.querySelector('.dot.close')!.addEventListener('click', () => { void QuitApp(); });
+titlebar.querySelector('.dot.min')!.addEventListener('click', () => { WindowMinimise(); });
+titlebar.querySelector('.dot.max')!.addEventListener('click', () => { WindowToggleMaximise(); });
+
+// ---------------------------------------------------------------- toolbar actions
+
+document.getElementById('btn-open')!.addEventListener('click', () => { void openFile(); });
+document.getElementById('btn-save')!.addEventListener('click', () => { void saveCurrent(); });
+document.getElementById('btn-new')!.addEventListener('click', () => { void newFile(); });
+document.getElementById('btn-theme')!.addEventListener('click', () => { void toggleTheme(); });
+
+// Mode tabs
+pane.querySelectorAll('.seg button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    pane.querySelectorAll('.seg button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const mode = btn.dataset.mode as 'split' | 'editor' | 'preview';
+    pane.classList.remove('editor-only', 'preview-only');
+    if (mode === 'editor') pane.classList.add('editor-only');
+    if (mode === 'preview') pane.classList.add('preview-only');
+  });
+});
+
+// ---------------------------------------------------------------- drop support
+
+const onDrop = (x: number, y: number, paths: string[]) => {
+  const p = paths.find((q) => /\.(md|markdown|mdown|txt)$/i.test(q));
+  if (!p) return;
+  void LoadFile(p).then((content) => loadContent(p, content));
+};
+
+// OnFileDrop is available in the production runtime; guard so a missing API
+// cannot abort the whole bundle before init() runs.
+try {
+  OnFileDrop(onDrop);
+} catch {
+  // Drag-and-drop unavailable; file dialog still works.
+}
+
+// ---------------------------------------------------------------- init
+
+async function init() {
+  try {
+    const s = await GetSettings();
+    applyTheme(s.Theme === 'light' ? 'light' : 'dark');
+  } catch (err) {
+    console.error('init: settings failed', err);
+    applyTheme('dark');
+  }
+  try {
+    const welcomePath = await GetWelcome();
+    const content = await LoadFile(welcomePath);
+    await loadContent(welcomePath, content);
+  } catch (err) {
+    console.error('init: welcome failed', err);
+    setTitle('untitled');
+    statusEl.textContent = 'Ready';
+  }
+  cm.focus();
+}
+
+window.addEventListener('DOMContentLoaded', () => { void init(); });
