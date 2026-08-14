@@ -34,7 +34,7 @@
 - **Shell**：Git Bash（项目终端默认）；打包脚本内部由 Wails 调用 PowerShell
 - **版本管理**：git 仓库（main 分支，无分支策略）
 - **语言 / 运行时**：Go 1.25.3（go.mod 声明 go 1.24，Wails 模板值）；Node.js 22 + pnpm 10（前端构建）
-- **依赖管理**：Go → `go.mod`/`go.sum`；前端 → `frontend/package.json` + `pnpm-lock.yaml`（pnpm 强制，SCOPE 要求）
+- **依赖管理**：Go → `go.mod`/`go.sum`；前端 → `frontend/package.json` + `pnpm-lock.yaml`（pnpm 强制，SCOPE 要求）；★ pnpm 版本在 `package.json` 的 `packageManager` 字段声明（`pnpm@10.19.0`），CI 的 `pnpm/action-setup@v4` 自动读取，勿在 workflow 硬编码
 - **如何运行**：
   - 开发：`wails dev`（wails CLI 在 `$(go env GOPATH)/bin`，需在 PATH 中；本机已 `go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
   - 打包：`wails build` → `build/bin/mado.exe`

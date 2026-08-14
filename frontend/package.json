@@ -2,6 +2,7 @@
   "name": "mado-frontend",
   "private": true,
   "version": "1.0.0",
+  "packageManager": "pnpm@10.19.0",
   "type": "module",
   "scripts": {
     "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"require('fs').copyFileSync('index.html','dist/index.html')\"",
