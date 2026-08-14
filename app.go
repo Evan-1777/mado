@@ -19,9 +19,11 @@ import (
 // App is the root Wails-bound application object. All exported methods are
 // exposed to the frontend.
 type App struct {
-	ctx      context.Context
-	settings settings.Settings
-	dirty    bool
+	ctx         context.Context
+	settings    settings.Settings
+	dirty       bool
+	quitting    bool
+	startupFile string
 }
 
 // NewApp creates the application instance.
@@ -132,40 +134,58 @@ func (a *App) ConfirmDiscard() bool {
 	return answer == "Discard"
 }
 
+// SetStartupFile records the file path passed on the command line (used by
+// Windows "Open with" file association launches).
+func (a *App) SetStartupFile(path string) {
+	a.startupFile = path
+}
+
+// GetStartupFile returns the file path the app was launched with, or an
+// empty string when none was given.
+func (a *App) GetStartupFile() string {
+	return a.startupFile
+}
+
 // SetDirty records whether the editor has unsaved changes. It is used by
-// quitConfirm so that closing only asks for confirmation when changes
+// OnBeforeClose so that closing only asks for confirmation when changes
 // would be lost.
 func (a *App) SetDirty(dirty bool) {
 	a.dirty = dirty
 }
 
-// quitConfirm asks the user whether to quit; used by the title bar close
-// button and OnBeforeClose. Clean state quits without prompting; dirty state
-// shows a native confirmation dialog first.
-func (a *App) quitConfirm() bool {
+// ConfirmSave asks the user whether to save unsaved changes before closing.
+// Returns "yes" (save and close), "no" (close without saving) or "cancel"
+// (keep editing). The dialog X / Esc maps to "cancel" via CancelButton.
+func (a *App) ConfirmSave() string {
 	if a.ctx == nil || !a.dirty {
-		return true
+		return "no"
 	}
 	answer, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
 		Title:         "Mado",
-		Message:       "You have unsaved changes. Close anyway?",
-		Buttons:       []string{"Close", "Cancel"},
-		DefaultButton: "Cancel",
-		CancelButton:  "Cancel",
+		Message:       "是否保存该文件的修改？",
+		Buttons:       []string{"是", "否", "取消"},
+		DefaultButton: "是",
+		CancelButton:  "取消",
 	})
 	if err != nil {
-		return true
+		return "cancel" // never lose data on dialog failure
 	}
-	return answer == "Close"
+	switch answer {
+	case "是":
+		return "yes"
+	case "否":
+		return "no"
+	default:
+		return "cancel"
+	}
 }
 
-// QuitApp is invoked by the title bar close button. It asks for confirmation
-// and quits when accepted.
-func (a *App) QuitApp() {
-	if a.quitConfirm() {
-		runtime.Quit(a.ctx)
-	}
+// ForceQuit exits without any prompt. The quitting flag makes the
+// OnBeforeClose hook allow the close instead of re-emitting request-close.
+func (a *App) ForceQuit() {
+	a.quitting = true
+	runtime.Quit(a.ctx)
 }
 
 // pickFile opens the native open-file dialog.
@@ -190,6 +210,22 @@ func (a *App) pickFile() (string, error) {
 // path (empty string when cancelled).
 func (a *App) OpenFileDialog() string {
 	f, err := a.pickFile()
+	if err != nil {
+		return ""
+	}
+	return f
+}
+
+// SaveFileDialog opens the native save-file dialog and returns the chosen
+// path (empty string when cancelled). Used when saving an untitled document.
+func (a *App) SaveFileDialog() string {
+	f, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save Markdown file",
+		DefaultFilename: "untitled.md",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Markdown", Pattern: "*.md;*.markdown;*.mdown;*.txt"},
+		},
+	})
 	if err != nil {
 		return ""
 	}

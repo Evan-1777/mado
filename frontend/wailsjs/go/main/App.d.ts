@@ -4,9 +4,15 @@ import {settings} from '../models';
 
 export function ConfirmDiscard():Promise<boolean>;
 
+export function ConfirmSave():Promise<string>;
+
+export function ForceQuit():Promise<void>;
+
 export function GetCSS():Promise<string>;
 
 export function GetSettings():Promise<settings.Settings>;
+
+export function GetStartupFile():Promise<string>;
 
 export function GetWelcome():Promise<string>;
 
@@ -16,9 +22,9 @@ export function OnFileDrop(arg1:number,arg2:number,arg3:Array<string>):Promise<v
 
 export function OpenFileDialog():Promise<string>;
 
-export function QuitApp():Promise<void>;
-
 export function Render(arg1:string):Promise<string>;
+
+export function SaveFileDialog():Promise<string>;
 
 export function SaveFile(arg1:string,arg2:string):Promise<void>;
 

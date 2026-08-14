@@ -7,9 +7,10 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty, QuitApp, OpenFileDialog, ConfirmDiscard,
+  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty, ConfirmDiscard,
+  ConfirmSave, ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog,
 } from '../wailsjs/go/main/App';
-import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop } from '../wailsjs/runtime/runtime';
+import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 
 // ---------------------------------------------------------------- helpers
 
@@ -253,16 +254,25 @@ async function openFile() {
   }
 }
 
-async function saveCurrent() {
-  if (!currentFile) return;
+async function saveCurrent(): Promise<boolean> {
+  let path = currentFile;
+  if (!path) {
+    // Untitled document: ask where to save. Cancelling aborts the save.
+    path = await SaveFileDialog();
+    if (!path) return false;
+  }
   const content = cm.state.doc.toString();
   try {
-    await SaveFile(currentFile, content);
+    await SaveFile(path, content);
+    currentFile = path;
+    setTitle(baseName(path));
     setDirty(false);
     statusEl.textContent = 'Saved';
+    return true;
   } catch (err) {
     console.error(err);
     statusEl.textContent = 'Save failed';
+    return false;
   }
 }
 
@@ -282,6 +292,39 @@ async function confirmDiscard(): Promise<boolean> {
   return ConfirmDiscard();
 }
 
+// ---------------------------------------------------------------- close flow
+
+// Title-bar close button: clean state exits immediately, dirty state runs the
+// save confirmation.
+async function requestClose() {
+  if (!dirty) {
+    ForceQuit();
+    return;
+  }
+  await handleCloseFlow();
+}
+
+// Shared confirmation for both close paths (title bar + Alt+F4). "yes" saves
+// then quits (a failed save keeps the window open), "no" quits as-is, and
+// "cancel" — including the dialog X / Esc — leaves everything untouched.
+async function handleCloseFlow() {
+  const choice = await ConfirmSave();
+  if (choice === 'cancel') return;
+  if (choice === 'yes') {
+    const ok = await saveCurrent();
+    if (!ok) return; // save failed or user cancelled Save As: keep editing
+  }
+  ForceQuit();
+}
+
+// Alt+F4 / taskbar close: OnBeforeClose (Go) blocks the close and defers the
+// decision here when the editor is dirty.
+try {
+  EventsOn('request-close', () => { void handleCloseFlow(); });
+} catch {
+  // Event runtime unavailable (should not happen in production).
+}
+
 // ---------------------------------------------------------------- dialogs
 
 // Native open-file dialog is exposed as a Go binding (OpenFileDialog).
@@ -299,15 +342,15 @@ function setWinGlyphs(maximised: boolean) {
 }
 
 // Caption buttons: unlike the old custom dots, these drive the native window
-// commands. Close calls QuitApp(), which routes through quitConfirm() and then
-// runtime.Quit(); that path posts WM_QUIT and actually exits the process.
+// commands. Close routes through requestClose so a dirty editor asks to save
+// first; the actual exit is ForceQuit, which OnBeforeClose lets through.
 titlebar.querySelector('.win-min')!.addEventListener('click', () => { WindowMinimise(); });
 titlebar.querySelector('.win-max')!.addEventListener('click', async () => {
   const wasMax = await WindowIsMaximised();
   setWinGlyphs(!wasMax);
   if (wasMax) WindowUnmaximise(); else WindowMaximise();
 });
-titlebar.querySelector('.win-close')!.addEventListener('click', () => { void QuitApp(); });
+titlebar.querySelector('.win-close')!.addEventListener('click', () => { void requestClose(); });
 setWinGlyphs(false);
 
 // ---------------------------------------------------------------- toolbar actions
@@ -356,9 +399,17 @@ async function init() {
     applyTheme('dark');
   }
   try {
-    const welcomePath = await GetWelcome();
-    const content = await LoadFile(welcomePath);
-    await loadContent(welcomePath, content);
+    // Windows file-association launch ("Open with") passes the document on
+    // the command line; prefer it over the last-opened file.
+    let path = '';
+    try {
+      path = await GetStartupFile();
+    } catch {
+      path = '';
+    }
+    if (!path) path = await GetWelcome();
+    const content = await LoadFile(path);
+    await loadContent(path, content);
   } catch (err) {
     console.error('init: welcome failed', err);
     setTitle('untitled');

@@ -6,12 +6,24 @@ export function ConfirmDiscard() {
   return window['go']['main']['App']['ConfirmDiscard']();
 }
 
+export function ConfirmSave() {
+  return window['go']['main']['App']['ConfirmSave']();
+}
+
+export function ForceQuit() {
+  return window['go']['main']['App']['ForceQuit']();
+}
+
 export function GetCSS() {
   return window['go']['main']['App']['GetCSS']();
 }
 
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
+}
+
+export function GetStartupFile() {
+  return window['go']['main']['App']['GetStartupFile']();
 }
 
 export function GetWelcome() {
@@ -30,12 +42,12 @@ export function OpenFileDialog() {
   return window['go']['main']['App']['OpenFileDialog']();
 }
 
-export function QuitApp() {
-  return window['go']['main']['App']['QuitApp']();
-}
-
 export function Render(arg1) {
   return window['go']['main']['App']['Render'](arg1);
+}
+
+export function SaveFileDialog() {
+  return window['go']['main']['App']['SaveFileDialog']();
 }
 
 export function SaveFile(arg1, arg2) {

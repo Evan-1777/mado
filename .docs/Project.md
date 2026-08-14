@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.1 GUI 修复中：Split 预览占位符显隐与模式切换已修复，待云端 CI 验收）
+- **当前阶段**：开发中（v1.2：文件关联启动参数、关闭确认三态弹窗已修复，待云端 CI 验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -67,11 +67,11 @@ docs/                    # 用户文档
   - `mdrender.Render(md) → safe HTML`（script 已剥离）
   - `theme.ThemeCSS(t) → 组合预览 CSS`（tokens + base + theme 特化）
 - **数据流**：
-  - 启动：main.go → wails.Run → 前端加载 → `GetSettings`（主题）→ `GetWelcome`（lastfile 或欢迎文档）→ 编辑器显示
+  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 重建 iframe srcdoc
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
-  - 关闭：标题栏关闭钮 → `QuitApp()` → Go `quitConfirm()`：未保存修改（dirty）时弹原生确认框，否则直接 `runtime.Quit()` 退出；Alt+F4/任务栏关闭走 `OnBeforeClose`，同一套逻辑
-  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动
+  - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()` 调 `ConfirmSave()` 原生三键弹窗（是否保存该文件的修改？是/否/取消，X/Esc=取消）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。`quitting` 标志防 OnBeforeClose 二次拦截
+  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
 - **模块依赖**：
   - `internal/*` 禁止互相依赖（filesys/settings 仅通过共享 JSON 文件松耦合，禁止 import 对方）
   - `main.go`/`app.go` 是唯一允许 import internal 的包
@@ -94,6 +94,8 @@ docs/                    # 用户文档
 - 「`frontend/dist/` 构建产物禁止提交——原因：每次 pnpm build 全量重建，且 go:embed 编译时读取」
 - 「goldmark 引擎在 Render 中每次新建——原因：goldmark 实例非并发安全，创建成本 <10µs 可忽略」
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
+- 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；v1.2 已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
+- 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端；原生模态对话框阻塞 UI 消息循环，天然防重入」
 
 ## 7. 外部依赖与集成
 
@@ -108,6 +110,7 @@ docs/                    # 用户文档
 - 2026-08-14 HTML 默认渲染 + script 剥离而非全禁——理由：满足「默认支持 HTML 渲染」需求，剥离 script 阻断 XSS
 - 2026-08-14 选 CodeMirror 6 而非 Monaco——理由：Monaco 200KB+ 过重，cm6 增量解析且专业级
 - 2026-08-14 选 iframe+srcdoc 重建而非 document.write——理由：隔离 CSS、防弹跳、无闪烁
+- 2026-08-14 关闭确认采用「Go emit request-close → 前端统一处理」而非 Go 同步弹窗——理由：保存需编辑器内容（仅前端持有），旧双弹窗链路（QuitApp→Quit→OnBeforeClose→quitConfirm 二次弹窗且默认取消）导致「点确认关不掉」；前端 ConfirmSave 三键弹窗（是/否/取消）+ quitting 标志彻底闭环
 - 2026-08-14 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
 - 2026-08-14 字体用本地栈（Cascadia Code/Consolas）而非网络字体——理由：离线可用、无 FOUT
 
