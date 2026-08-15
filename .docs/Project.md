@@ -24,23 +24,27 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.2：文件关联启动参数、关闭确认改前端 `<dialog>` 模态已修复，待云端 CI 验收）
+- **当前阶段**：开发中（v1.3：预览目录链接黑屏修复 + 开发环境迁移 Linux/npm 完成，待云端 CI 验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
 
 ## 2. 环境与运行
 
-- **运行平台**：Windows 10/11（依赖系统 Edge WebView2 Runtime，本机 151.0.4129.78 已确认安装）
-  - ★ 易错：路径含中文/空格须加引号；`%APPDATA%/Mado/` 为状态目录
-- **Shell**：Git Bash（项目终端默认）；打包脚本内部由 Wails 调用 PowerShell
+- **运行平台**：Windows 10/11（目标平台，依赖系统 Edge WebView2 Runtime）；**开发环境**：Linux x86_64（2026-08-15 迁移）
+  - ★ 易错：路径含中文/空格须加引号；`%APPDATA%/Mado/` 为 Windows 状态目录，Linux 下 `os.UserConfigDir()` 解析到 `$XDG_CONFIG_HOME`/`~/.config`
+- **Shell**：bash
 - **版本管理**：git 仓库（main 分支，无分支策略）
-- **语言 / 运行时**：Go 1.25.3（go.mod 声明 go 1.24，Wails 模板值）；Node.js 22 + pnpm 10（前端构建）
-- **依赖管理**：Go → `go.mod`/`go.sum`；前端 → `frontend/package.json` + `pnpm-lock.yaml`（pnpm 强制，SCOPE 要求）；★ pnpm 版本在 `package.json` 的 `packageManager` 字段声明（`pnpm@10.19.0`），CI 的 `pnpm/action-setup@v4` 自动读取，勿在 workflow 硬编码
+- **语言 / 运行时**：Go 1.25.3（用户级安装于 `~/.local/go`，单版本，会话内 `export PATH=$HOME/.local/go/bin:$PATH`）；Node.js 24 + npm 11（前端构建）
+- **依赖管理**：Go → `go.mod`/`go.sum`；前端 → `frontend/package.json` + `package-lock.json`（一律 npm，无 pnpm）
 - **如何运行**：
-  - 开发：`wails dev`（wails CLI 在 `$(go env GOPATH)/bin`，需在 PATH 中；本机已 `go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
-  - 打包：`wails build` → `build/bin/mado.exe`
-  - ★ 易错：`wails build` 会先跑 `frontend:install`（pnpm install）与 `frontend:build`（pnpm build），node_modules 缺失时自动补装
-  - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + pnpm + Node 22 + wails CLI v2.14.0 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input，如 `v1.2.0`）→ 同一构建链 → 校验版本号格式 → `gh release create` 发布 release 并附 exe）。SCOPE 约定不在本机做全量构建，验收以云端 workflow 结果为准；本机验证手段为 go build/vet/test 与前端 esbuild 语法检查（`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`，零产物，stdout 丢弃）
-- **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证（Plan §5 验收走查）。★ 零产物 esbuild 验证必须加 `--loader:.css=empty`：不加输出路径时 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`
+  - 开发：`wails dev`（需 Windows/wails CLI，本机不做）
+  - 打包：`wails build` → `build/bin/mado.exe`（云端 CI）
+  - **本机验证链**（最小占用，产物均 gitignored）：
+    1. `cd frontend && npm install --include=dev`（★ 本环境 `NODE_ENV=production` 且 `omit=dev`，不加 `--include=dev` 会跳过 esbuild）
+    2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`（stdout 丢弃；★ 必须带 `--loader:.css=empty`，否则 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`）
+    3. `npm run build` 产出 `dist/`（go:embed 依赖，约 544K）
+    4. `go vet ./...` + `go test ./...`
+  - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
+- **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实配置目录：隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
 
 ## 3. 目录结构与模块职责
 
@@ -55,7 +59,7 @@ internal/settings/       # 主题等用户偏好持久化（共享同一 JSON �
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
 frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
-frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容）
+frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（~15.6MB）
 docs/                    # 用户文档
 ```
@@ -68,7 +72,7 @@ docs/                    # 用户文档
   - `theme.ThemeCSS(t) → 组合预览 CSS`（tokens + base + theme 特化）
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
-  - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）
+  - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
   - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
@@ -86,23 +90,26 @@ docs/                    # 用户文档
 
 ## 6. 约束与已知坑
 
-- 「SCOPE.md 禁止本机编译 Go、Rust——原因：本地曾无环境，避免占用空间」——**已过时**：本机已确认 Go 1.25.3 + Rust 1.91.1 已安装，且 Go 方案被用户选定，本机编译 Go 是常态操作。Rust 仍未使用。
-- 「Windows 构建产物验收在云端——原因：SCOPE 约定不占用本机空间做全量构建，CI workflow 产出 exe artifact，由用户在云端触发并下载验收；本机仅允许前端 esbuild 语法验证（`node_modules/.bin/esbuild src/main.ts --bundle` 不产构建物）」
+- 「开发环境 2026-08-15 迁移至 Linux x86_64，前端包管理一律 npm，Go 1.25.3 用户级安装于 `~/.local/go`——原因：新环境无 pnpm；wails 全量构建仍由云端 CI 负责，本机仅 vet/test + esbuild 语法检查 + npm run build 产 dist（go:embed 依赖）」
+- 「本环境 `NODE_ENV=production` 且 npm `omit=dev`——原因：esbuild 是 devDependency，安装必须 `npm install --include=dev`，否则被静默跳过」
+- 「Windows 构建产物验收在云端——原因：SCOPE 约定不占用本机空间做全量构建，CI workflow 产出 exe artifact，由用户在云端触发并下载验收；本机验证限于 go vet/test、零产物 esbuild 语法检查与 npm run build（产物 gitignored）」
 - 「wailsjs 生成绑定需与 Go 导出方法同步——原因：`frontend/wailsjs/` 在 `wails dev/build` 时自动重新生成覆盖，但仓库内提交的副本用于本地 esbuild 语法检查；新增 Go 绑定方法（如 SetDirty）时必须同步手补 App.js/App.d.ts 以便本地验证，CI 生成版本以 Go 为准」
 - 「`frontend/dist/` 是 go:embed 的 FS 根——原因：`main.go` 用 `//go:embed all:frontend/dist`，HTML 内引用资源必须写 `./app.js`/`./app.css` 而非 `./dist/app.js`」——此为 v1 打包期真实踩坑，修复后写死约定
 - 「`frontend/wailsjs/` 由 wails 自动生成，禁止手改——原因：每次 wails dev/build 会重新生成覆盖」
-- 「`frontend/dist/` 构建产物禁止提交——原因：每次 pnpm build 全量重建，且 go:embed 编译时读取」
+- 「`frontend/dist/` 构建产物禁止提交——原因：每次 npm run build 全量重建，且 go:embed 编译时读取」
 - 「goldmark 引擎在 Render 中每次新建——原因：goldmark 实例非并发安全，创建成本 <10µs 可忽略」
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
+- 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档被替换为空文档，暗色主题下即黑屏且纯预览模式无编辑不会自愈；修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），fragment 链接 preventDefault + scrollIntoView，其余链接一并阻断（任何导航都会毁掉原地更新模型）；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
 - 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；v1.2 已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
 - 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端」
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
+- 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
 
 ## 7. 外部依赖与集成
 
-- **运行时依赖**：系统 Edge WebView2 Runtime（Wails 硬依赖，Windows 10/11 自带，本机 151.0.4129.78）
-- **本地工具**：`wails` CLI（GOPATH/bin）→ 构建/开发；`pnpm` → 前端依赖管理；`esbuild` → 前端打包
+- **运行时依赖**：系统 Edge WebView2 Runtime（Wails 硬依赖，Windows 10/11 自带；目标平台）
+- **本地工具**：`go`（`~/.local/go/bin`，用户级）；`npm` → 前端依赖管理；`esbuild` → 前端打包（frontend/node_modules 内，无需全局装）；wails CLI 仅云端 CI 使用
 
 ## 8. 决策记录
 
@@ -112,6 +119,9 @@ docs/                    # 用户文档
 - 2026-08-14 HTML 默认渲染 + script 剥离而非全禁——理由：满足「默认支持 HTML 渲染」需求，剥离 script 阻断 XSS
 - 2026-08-14 选 CodeMirror 6 而非 Monaco——理由：Monaco 200KB+ 过重，cm6 增量解析且专业级
 - 2026-08-14 选 iframe+srcdoc 首帧骨架 + 内原地更新而非 document.write——理由：隔离 CSS、防弹跳；首帧 srcdoc 引导，后续原地更新保留滚动、无闪烁（2026-08-15 修正：初始实现整体重设 srcdoc 导致编辑时预览闪烁跳顶，实测后改为原地更新，见 §6）
+- 2026-08-15 预览锚点链接采用父侧 click 拦截 + scrollIntoView 而非帧内脚本或放宽 sandbox——理由：sandbox 无 allow-scripts 帧内脚本不可用，allow-same-origin 已允许跨帧 DOM；Chromium 对 about:srcdoc fragment 导航会替换帧文档致黑屏，任何导航都毁掉原地更新模型，故外链一并阻断（外链用系统浏览器打开需新增 Go 绑定，非本 bug 范围，未做）
+- 2026-08-15 测试配置目录隔离采用 t.Setenv 同设 APPDATA + XDG_CONFIG_HOME 而非仅重写 APPDATA——理由：os.UserConfigDir 跨平台读取不同环境变量，双设一处覆盖两端，避免 Linux 上测试污染真实 ~/.config
+- 2026-08-15 包管理器 pnpm → npm（本地与 CI 一致切换）——理由：新开发环境无 pnpm，统一链路避免双锁文件漂移
 - 2026-08-14 关闭确认采用「Go emit request-close → 前端统一处理」而非 Go 同步弹窗——理由：保存需编辑器内容（仅前端持有），旧双弹窗链路（QuitApp→Quit→OnBeforeClose→quitConfirm 二次弹窗且默认取消）导致「点确认关不掉」
 - 2026-08-15 关闭确认改用前端原生 `<dialog>` 模态（`askUnsaved()`）而非修复 Go 侧英文返回值映射——理由：wails v2 Windows `MessageDialog` 恒为 MB_YESNO 两键（无取消/X/Esc，误触关闭只能存或丢，有数据丢失风险）且返回英文串曾致中文匹配失效；`<dialog>` 在 WebView2 原生支持 Esc/焦点囚禁/顶层叠放，三态完整，新建流程复用同一组件
 - 2026-08-14 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
@@ -121,4 +131,4 @@ docs/                    # 用户文档
 
 - **lastfile** = 上次打开的文件路径，持久化于共享 settings.json 的 `lastfile` 字段
 - **欢迎文档** = 首次启动时自动写入 `%APPDATA%/Mado/welcome.md` 的默认演示文档
-- **预览通道** = 编辑区 → mdrender → iframe 内原地更新（style + article，首帧 srcdoc 引导）的渲染链路
+- **预览通道** = 编辑区 → mdrender → iframe 内原地更新（style + article，首帧 srcdoc 引导）+ 父侧链接拦截（锚点滚动/导航阻断）的渲染链路

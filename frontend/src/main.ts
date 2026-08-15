@@ -239,6 +239,37 @@ function writePreview(html: string) {
   }
 }
 
+// ---------------------------------------------------------------- preview links
+
+// Anchor links inside the preview (e.g. a TOC entry pointing to "#section")
+// must not use the default navigation: Chromium treats about:srcdoc#section
+// as a new iframe navigation and replaces the in-place document with an empty
+// one, so the preview goes black (and stays black until the next edit). The
+// sandbox has no allow-scripts, so we intercept clicks from the parent
+// (allow-same-origin grants DOM access) and scroll to the target manually.
+function hookPreviewLinks() {
+  const doc = previewIframe.contentDocument;
+  if (!doc) return;
+  doc.addEventListener('click', (e) => {
+    // No `instanceof Element` here: the event realm is the frame's, not the
+    // parent's, so cross-realm checks would fail. Click targets are elements.
+    const a = (e.target as Element | null)?.closest?.('a');
+    if (!a) return;
+    e.preventDefault(); // any navigation destroys the preview document
+    const href = a.getAttribute('href') ?? '';
+    if (href.startsWith('#') && href.length > 1) {
+      // goldmark emits literal heading ids and matching literal hrefs, so a
+      // plain id lookup is exact. Unknown anchors: blocked above, no scroll.
+      doc.getElementById(href.slice(1))?.scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+}
+
+// The listener lives on the frame's document, so it must be re-attached every
+// time that document is rebuilt (srcdoc bootstrap or fallback rebuild). In-
+// place updates never replace the document, so it survives edits.
+previewIframe.addEventListener('load', hookPreviewLinks);
+
 // ---------------------------------------------------------------- file ops
 
 function setTitle(name: string) {
