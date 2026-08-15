@@ -74,6 +74,11 @@ toolbar.innerHTML = `
 const pane = document.createElement('main');
 pane.className = 'pane';
 pane.innerHTML = `
+  <aside class="toc-sidebar" id="toc-sidebar" aria-label="Document outline">
+    <div class="toc-header"><span>目录</span><button id="toc-expand" type="button">展开全部</button></div>
+    <nav class="toc-tree" id="toc-tree"></nav>
+    <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
+  </aside>
   <section class="editor-col">
     <div class="editor-wrap" id="editor-host"></div>
   </section>
@@ -90,6 +95,73 @@ const statusEl = document.getElementById('status-text')!;
 const editorHost = document.getElementById('editor-host')!;
 const previewIframe = document.getElementById('preview') as HTMLIFrameElement;
 const previewEmpty = document.getElementById('preview-empty')!;
+const tocTree = document.getElementById('toc-tree')!;
+const tocEmpty = document.getElementById('toc-empty')!;
+const tocExpand = document.getElementById('toc-expand')!;
+
+type TocNode = { level: number; text: string; line: number; ordinal: number; children: TocNode[]; expanded: boolean };
+let tocRoots: TocNode[] = [];
+
+function parseToc(markdownText: string): TocNode[] {
+  const roots: TocNode[] = [];
+  const stack: TocNode[] = [];
+  let fenced = false;
+  let ordinal = 0;
+  markdownText.split('\\n').forEach((line, lineIndex) => {
+    if (/^\\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
+    if (fenced) return;
+    const match = /^(\\s{0,3})(#{1,6})\\s+(.+?)\\s*#*\\s*$/.exec(line);
+    if (!match) return;
+    const node: TocNode = { level: match[2].length, text: match[3].trim(), line: lineIndex, ordinal: ordinal++, children: [], expanded: false };
+    while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();
+    if (stack.length) stack[stack.length - 1].children.push(node); else roots.push(node);
+    stack.push(node);
+  });
+  return roots;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char] ?? char));
+}
+
+function flattenToc(nodes: TocNode[]): TocNode[] { return nodes.flatMap((node) => [node, ...flattenToc(node.children)]); }
+
+function renderToc() {
+  tocTree.innerHTML = '';
+  const all = flattenToc(tocRoots);
+  tocEmpty.hidden = all.length > 0;
+  tocExpand.disabled = all.length === 0;
+  const build = (nodes: TocNode[], parent: HTMLElement) => nodes.forEach((node) => {
+    const row = document.createElement('div');
+    row.className = 'toc-row';
+    row.style.setProperty('--toc-level', String(node.level - 1));
+    const toggle = document.createElement('button');
+    toggle.className = 'toc-toggle'; toggle.type = 'button'; toggle.disabled = node.children.length === 0;
+    toggle.textContent = node.children.length ? (node.expanded ? '⌄' : '›') : '·';
+    toggle.setAttribute('aria-label', node.expanded ? '折叠目录' : '展开目录');
+    const link = document.createElement('button'); link.className = 'toc-link'; link.type = 'button'; link.textContent = node.text;
+    link.title = node.text;
+    toggle.addEventListener('click', () => { node.expanded = !node.expanded; renderToc(); });
+    link.addEventListener('click', () => jumpToTocNode(node));
+    row.append(toggle, link); parent.append(row);
+    if (node.children.length && node.expanded) { const children = document.createElement('div'); children.className = 'toc-children'; build(node.children, children); parent.append(children); }
+  });
+  build(tocRoots, tocTree);
+}
+
+function jumpToTocNode(node: TocNode) {
+  const paneMode = pane.classList.contains('editor-only') ? 'editor' : 'preview';
+  if (paneMode === 'editor') {
+    const line = cm.state.doc.line(Math.min(node.line + 1, cm.state.doc.lines));
+    cm.dispatch({ selection: { anchor: line.from }, scrollIntoView: true }); cm.focus();
+    return;
+  }
+  const headings = Array.from(previewIframe.contentDocument?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []);
+  headings[node.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function updateToc(markdownText: string) { tocRoots = parseToc(markdownText); renderToc(); }
+tocExpand.addEventListener('click', () => { flattenToc(tocRoots).forEach((node) => { if (node.children.length) node.expanded = true; }); renderToc(); });
 
 // ---------------------------------------------------------------- theme
 
@@ -190,6 +262,7 @@ async function refreshPreview() {
     if (version !== renderVersion) return; // superseded by newer input
     previewCss = css;
     writePreview(html);
+    updateToc(md);
     statusEl.textContent = dirty ? 'Unsaved changes' : 'Ready';
   } catch (err) {
     console.error('render failed', err);

@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.3：预览目录链接黑屏修复 + 开发环境迁移 Linux/npm 完成，待云端 CI 验收）
+- **当前阶段**：开发中（v1.4：Editor/Preview 聚焦模式多层目录侧栏完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -73,6 +73,7 @@ docs/                    # 用户文档
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建树（跳过 fenced code），记录标题层级、原文行号与渲染序号；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，默认全部折叠，可逐节点或一键全部展开；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`，Split 模式不占空间
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
   - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
@@ -121,6 +122,7 @@ docs/                    # 用户文档
 - 2026-08-14 选 CodeMirror 6 而非 Monaco——理由：Monaco 200KB+ 过重，cm6 增量解析且专业级
 - 2026-08-14 选 iframe+srcdoc 首帧骨架 + 内原地更新而非 document.write——理由：隔离 CSS、防弹跳；首帧 srcdoc 引导，后续原地更新保留滚动、无闪烁（2026-08-15 修正：初始实现整体重设 srcdoc 导致编辑时预览闪烁跳顶，实测后改为原地更新，见 §6）
 - 2026-08-15 预览锚点链接采用父侧 click 拦截 + URL fragment 解码 + scrollIntoView，而非帧内脚本或放宽 sandbox——理由：sandbox 无 allow-scripts 帧内脚本不可用，allow-same-origin 已允许跨帧 DOM；Chromium 对 about:srcdoc fragment 导航会替换帧文档致黑屏，且 goldmark 对中文 href fragment 百分号编码、标题 id 保持 Unicode，必须解码后才能命中；任何导航都毁掉原地更新模型，故外链一并阻断（外链用系统浏览器打开需新增 Go 绑定，非本 bug 范围，未做）
+- 2026-08-18 Editor/Preview 聚焦模式目录采用前端共享树组件与 Markdown ATX 轻量解析，而非新增 Go API 或依赖——理由：原文行号只存在于编辑端，前端一次解析可同时服务 CodeMirror 行定位和 iframe 标题序号定位；功能局限在聚焦模式，Split 布局无需改动
 - 2026-08-16 标题 id 采用 GitHub 风格 slug 生成器（中文保留、ASCII 小写、空白转 `-`、全角标点删除、重复加 `-N`）而非 goldmark 内置生成器——理由：内置 `ids.Generate` 丢弃全部非 ASCII，中文标题 id 退化，目录链接（如 `#一先搞清楚-wsl-是什么`）永远查不到；实测 GitHub 对 `动手学深度学习（Dive into Deep Learning，D2L.ai）` 生成 `动手学深度学习dive-into-deep-learningd2lai`，规则与用户手写目录格式一致；纯 ASCII 标题在新旧规则下产物相同，无兼容性变化
 - 2026-08-15 测试配置目录隔离采用 t.Setenv 同设 APPDATA + XDG_CONFIG_HOME 而非仅重写 APPDATA——理由：os.UserConfigDir 跨平台读取不同环境变量，双设一处覆盖两端，避免 Linux 上测试污染真实 ~/.config
 - 2026-08-15 包管理器 pnpm → npm（本地与 CI 一致切换）——理由：新开发环境无 pnpm，统一链路避免双锁文件漂移

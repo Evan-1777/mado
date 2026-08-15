@@ -259,6 +259,88 @@ body {
   min-height: 0;
 }
 
+/* Shared outline for the two focused document modes. The split view keeps
+   the canvas uncluttered; full-screen modes reserve this rail on the left. */
+.toc-sidebar {
+  display: none;
+  flex: 0 0 248px;
+  min-width: 0;
+  flex-direction: column;
+  background: var(--chrome-bg);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.pane.editor-only .toc-sidebar,
+.pane.preview-only .toc-sidebar { display: flex; }
+.toc-header {
+  height: 44px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+.toc-header button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.toc-header button:disabled { color: var(--text-dim); cursor: default; }
+.toc-tree { overflow: auto; padding: 10px 8px 18px; }
+.toc-row {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding-left: calc(var(--toc-level) * 15px);
+  border-radius: 6px;
+}
+.toc-row:hover { background: var(--surface-hover); }
+.toc-toggle, .toc-link {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.toc-toggle {
+  width: 22px;
+  flex: 0 0 22px;
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 1;
+}
+.toc-toggle:disabled { color: var(--border); cursor: default; }
+.toc-link {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 6px 5px;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.toc-row:hover .toc-link, .toc-link:focus-visible { color: var(--text); }
+.toc-empty {
+  padding: 18px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.toc-empty[hidden] { display: none; }
+@media (max-width: 680px) {
+  .toc-sidebar { flex-basis: 204px; }
+}
+
 /* Editor-only: hide the preview column. */
 .pane.editor-only .preview-col {
   display: none;
@@ -331,6 +413,10 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
 /* ============ unsaved-changes confirm dialog ============ */

@@ -1,73 +1,46 @@
-# Tasks：修复编辑时 Preview 闪烁并回到顶部
+# Tasks：全屏编辑器与预览目录
 
-**关联 Plan**：`Plan.md` —— 修复编辑时 Preview 闪烁并回到顶部 v1.0
-**总计 Task**：5 个
+**关联 Plan**：`Plan.md` —— 全屏编辑器与预览目录 v1.0  
+**总计 Task**：4 个  
+**完成日期**：2026-08-15  
+**回归测试结论**：前端 esbuild 语法检查、npm run build、go vet ./...、go test ./... 全部通过；Windows GUI 交互待云端环境验收。
 
----
+## Phase 1：目录模型与全屏布局
 
-## Phase 1：预览通道改造——srcdoc 首帧 + iframe 内原地更新
-
-### TASK-001：writePreview 重构为「srcdoc 首帧骨架 + iframe 内原地更新」
-
-- **Status**：DONE
-- **Description**：重构 `frontend/src/main.ts` 的 `writePreview(html)`：首次渲染（`previewIframe.srcdoc` 为空或骨架缺失）时用 srcdoc 写入完整骨架（`<style>` + `<article id="md-content">`）；后续渲染仅通过 `previewIframe.contentDocument` 替换 `<style>` 的 textContent 与 `<article id="md-content">` 的 innerHTML，不重设 srcdoc。
-- **Details**：
-  - 骨架结构：`<!DOCTYPE html><html><head><meta charset="utf-8"/><style>${previewCss}</style></head><body><article id="md-content">${html}</article></body></html>`
-  - 原地更新逻辑：`const doc = previewIframe.contentDocument;` 后 `doc.head.querySelector('style').textContent = previewCss;` 再 `doc.getElementById('md-content').innerHTML = html;`（CSS 先于内容，避免新内容短暂套旧样式）
-  - 骨架缺失判定：`srcdoc` 为空、`contentDocument` 为空、`getElementById('md-content')` 不存在（含 `<article>` 被 mdrender 输出意外清空/替换的情况）任一成立 → 走 srcdoc 重建
-  - 保留现有行为：`previewEmpty.hidden` 按 `html.trim().length > 0` 更新
-- **Acceptance Criteria**：
-  - `grep -n "srcdoc" frontend/src/main.ts` 仅命中首帧重建路径（≤3 处：初始赋值、重建分支）
-  - `node_modules/.bin/esbuild frontend/src/main.ts --bundle --loader:.css=empty` 退出码 0
-
-### TASK-002：refreshPreview 调用链适配与主题 CSS 内联刷新兼容
+### TASK-001：添加共享目录侧栏结构与全屏显示规则
 
 - **Status**：DONE
-- **Description**：调整 `refreshPreview()` 中 `writePreview(html)` 的调用时机与 `previewCss` 使用，确保主题切换（`applyTheme()` 内联 `refreshPreview()`）与编辑渲染走同一条原地更新路径，CSS 更新不依赖 srcdoc 重建。
-- **Details**：
-  - `refreshPreview()` 在 `Promise.all([Render(md), cssForTheme()])` 后先更新 `previewCss` 再调用 `writePreview(html)`（顺序不变，CSS 已先于内容替换）
-  - `applyTheme()` 置空 `previewCss` 后调 `refreshPreview()` 的行为保持：`cssForTheme()` 重新取 CSS → 原地替换 style 文本 → 主题即时生效
-  - 不新增 IPC、不改变 debounce/节流参数
-- **Acceptance Criteria**：
-  - `node_modules/.bin/esbuild frontend/src/main.ts --bundle --loader:.css=empty` 退出码 0
-  - `grep -n "srcdoc" frontend/src/main.ts` 中 srcdoc 赋值仅存在于首帧/重建路径
+- **Priority**：P0
+- **Description**：在前端创建目录侧栏，并仅在 Editor/Preview 全屏模式中显示；侧栏打开时将内容区域向右移动。
+- **Details**：复用现有主题变量；提供标题、全部展开按钮、树容器和无标题提示；保留窄屏下的可用布局。
+- **Acceptance Criteria**：运行 `npm run build` 成功；Split 模式目录侧栏隐藏；Editor/Preview 模式目录侧栏显示且内容区域位于侧栏右侧。
+- **Dependencies**：无
 
-## Phase 2：渲染时序与清理
-
-### TASK-003：原地更新异常回退 srcdoc 重建
+### TASK-002：从 Markdown 构建可折叠多层目录
 
 - **Status**：DONE
-- **Description**：`writePreview()` 原地更新路径包裹 try/catch：`contentDocument` 访问或 DOM 更新抛错（跨域/骨架异常）时回退到 srcdoc 整体重建，保证预览通道不白屏；重建后清空缓存引用（每次重建后骨架即为最新）。
-- **Details**：
-  - 回退路径复用 TASK-001 的骨架字符串构造逻辑（抽为局部函数或同函数内分支）
-  - 回退时更新 `previewEmpty.hidden`
-  - 无新增状态字段（`renderVersion` 守卫语义不变）
-- **Acceptance Criteria**：
-  - `node_modules/.bin/esbuild frontend/src/main.ts --bundle --loader:.css=empty` 退出码 0
-  - 代码审查确认：原地更新分支与回退分支互斥、回退分支可触发（`contentDocument` 为 null 或 DOM 缺失时进入）
+- **Priority**：P0
+- **Description**：解析 ATX 标题并构建多层级目录节点，跳过 fenced code 中的伪标题。
+- **Details**：记录标题级别、文本、编辑器行号和预览定位信息；默认节点全部折叠；标题变化后刷新目录。
+- **Acceptance Criteria**：使用包含 H1/H2/H3、重复标题和代码围栏的 Markdown 启动应用，目录层级与标题一致，代码围栏内容不生成目录项。
+- **Dependencies**：TASK-001
 
-## Phase 3：验证与文档
+## Phase 2：折叠交互与双向跳转
 
-### TASK-004：本机验证与实验对照
+### TASK-003：实现目录展开折叠与全部展开操作
 
 - **Status**：DONE
-- **Description**：运行本机可执行验证：esbuild 零产物语法检查退出码 0；对照 `scratch/` 实验页结论（Edge 151 无头：srcdoc 重载 scrollTop 归零 vs 原地更新 scrollTop 保留）在文档中记录；确认 `frontend/dist` 未被本地构建污染。
-- **Details**：
-  - 验证命令：`node_modules/.bin/esbuild frontend/src/main.ts --bundle --loader:.css=empty > /dev/null`（退出码 0）
-  - `git status --short` 确认无 `frontend/dist` 变更
-  - 交互行为（编辑滚动不跳顶、无闪烁）列入云端 CI artifact 人工走查清单
-- **Acceptance Criteria**：
-  - esbuild 验证退出码 0
-  - `git status --short` 无 `frontend/dist` 变更
-  - Plan.md 回归测试结论字段已填写验证结果
+- **Priority**：P0
+- **Description**：为目录节点添加折叠控制，并实现“展开全部”按钮。
+- **Details**：点击箭头只改变当前节点；点击目录文字执行跳转；无子节点不显示折叠按钮；按钮支持键盘焦点。
+- **Acceptance Criteria**：运行应用后默认所有有子节点的节点折叠；点击箭头能显示/隐藏子项；点击“展开全部”后所有层级可见。
+- **Dependencies**：TASK-002
 
-### TASK-005：Project.md 数据流描述同步
+### TASK-004：接入编辑器与预览跳转并完成验证
 
 - **Status**：DONE
-- **Description**：更新 `.docs/Project.md` §4 数据流中「编辑」条目：将「重建 iframe srcdoc」改为「srcdoc 首帧 + iframe 内原地更新（style 文本 + article innerHTML）」；§6 约束与已知坑新增一条：srcdoc 重建会重置滚动并闪烁，编辑渲染禁止重设 srcdoc。
-- **Details**：
-  - 改动仅限 `.docs/Project.md`，不涉及代码
-  - 术语表「预览通道」定义如需同步则一并更新
-- **Acceptance Criteria**：
-  - `.docs/Project.md` §4 编辑数据流描述与 `frontend/src/main.ts` 实际实现一致
-  - `.docs/Project.md` §6 含 srcdoc 重建限制条目
+- **Priority**：P0
+- **Description**：将目录项点击接入 CodeMirror 光标定位和 iframe 标题滚动，并执行回归验证、更新 Project.md。
+- **Details**：编辑器跳转到标题行并聚焦；预览按渲染后的标题 id 滚动；目录更新不改变原有预览锚点拦截；记录测试结论。
+- **Acceptance Criteria**：执行 `node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`、`npm run build`、`go vet ./...`、`go test ./...` 均返回 0；手动验证两种全屏模式跳转成功。
+- **Dependencies**：TASK-003
