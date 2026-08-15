@@ -257,6 +257,7 @@ body {
   gap: 1px;
   background: var(--border);
   min-height: 0;
+  position: relative; /* anchoring context for the TOC popover */
 }
 
 /* Shared outline for the two focused document modes. The split view keeps
@@ -272,12 +273,14 @@ body {
 }
 .pane.editor-only .toc-sidebar,
 .pane.preview-only .toc-sidebar { display: flex; }
+.pane.toc-collapsed .toc-sidebar { transition: flex-basis 0.18s ease; }
 .toc-header {
   height: 44px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 0 14px 0 18px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
@@ -285,6 +288,7 @@ body {
   font-weight: 600;
   letter-spacing: .04em;
 }
+.toc-header > span { flex: 1; }
 .toc-header button {
   border: 0;
   background: transparent;
@@ -295,6 +299,59 @@ body {
   padding: 4px 0;
 }
 .toc-header button:disabled { color: var(--text-dim); cursor: default; }
+/* Whole-sidebar collapse: a narrow rail stays visible in the focused modes;
+   clicking it restores the sidebar, hovering it floats a popover with the
+   full tree. */
+.toc-collapse-btn {
+  order: 3;
+  padding: 4px 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+.toc-rail {
+  display: none;
+  flex: 0 0 26px;
+  min-width: 0;
+  border: 0;
+  background: var(--chrome-bg);
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  padding: 0;
+}
+.toc-rail:hover { background: var(--surface-hover); color: var(--accent); }
+.pane.toc-collapsed.editor-only .toc-rail,
+.pane.toc-collapsed.preview-only .toc-rail { display: flex; }
+.pane.toc-collapsed.editor-only .toc-sidebar,
+.pane.toc-collapsed.preview-only .toc-sidebar { flex-basis: 26px; }
+.pane.toc-collapsed.editor-only .toc-sidebar .toc-header,
+.pane.toc-collapsed.preview-only .toc-sidebar .toc-header { display: none; }
+.pane.toc-collapsed.editor-only .toc-sidebar .toc-tree,
+.pane.toc-collapsed.preview-only .toc-sidebar .toc-tree,
+.pane.toc-collapsed.editor-only .toc-sidebar .toc-empty,
+.pane.toc-collapsed.preview-only .toc-sidebar .toc-empty { display: none; }
+/* Popover: a pane-level overlay anchored to the rail's right edge, sized
+   like the expanded sidebar. It is only shown while the sidebar is
+   collapsed and the rail is hovered. */
+.toc-popover {
+  display: none;
+  position: absolute;
+  left: 27px;
+  top: 0;
+  width: 248px;
+  height: 100%;
+  background: var(--chrome-bg);
+  border-right: 1px solid var(--border);
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  overflow: auto;
+  padding: 10px 8px 18px;
+}
+.pane.toc-collapsed.editor-only .toc-popover.toc-popover-visible,
+.pane.toc-collapsed.preview-only .toc-popover.toc-popover-visible { display: block; }
+/* The cursor can move from the rail into the popover (it covers this strip,
+   so mouseleave on the rail does not fire while the cursor is inside). */
 .toc-tree { overflow: auto; padding: 10px 8px 18px; }
 .toc-row {
   display: flex;

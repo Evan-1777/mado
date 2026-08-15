@@ -73,7 +73,7 @@ docs/                    # 用户文档
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
-  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建树（跳过 fenced code），记录标题层级、原文行号与渲染序号；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，默认全部折叠，可逐节点或一键全部展开；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`，Split 模式不占空间
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建树（跳过 fenced code），记录标题层级、原文行号与渲染序号；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，默认全部折叠，可逐节点或一键全部展开；侧栏可整栏折叠为 26px 窄条（点击恢复），折叠态悬停窄条浮出同构目录弹层（点击项跳转并收起），Editor/Preview 切换后折叠状态保留；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`，Split 模式不占空间
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
   - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存

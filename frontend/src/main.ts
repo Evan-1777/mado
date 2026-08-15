@@ -15,7 +15,7 @@ import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, Wi
 // ---------------------------------------------------------------- helpers
 
 function baseName(p: string): string {
-  const parts = p.split(/[\\/]/);
+  const parts = p.split(/[\/]/);
   return parts[parts.length - 1] || p;
 }
 
@@ -75,9 +75,13 @@ const pane = document.createElement('main');
 pane.className = 'pane';
 pane.innerHTML = `
   <aside class="toc-sidebar" id="toc-sidebar" aria-label="Document outline">
-    <div class="toc-header"><span>目录</span><button id="toc-expand" type="button">展开全部</button></div>
+    <div class="toc-header"><span>目录</span><button id="toc-expand" type="button">展开全部</button><button class="toc-collapse-btn" id="toc-collapse" type="button" title="折叠目录栏" aria-label="折叠目录栏">‹</button></div>
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
+  </aside>
+  <button class="toc-rail" id="toc-rail" type="button" title="展开目录栏" aria-label="展开目录栏">»</button>
+  <aside class="toc-popover" id="toc-popover" aria-label="Document outline popover">
+    <nav class="toc-tree"></nav>
   </aside>
   <section class="editor-col">
     <div class="editor-wrap" id="editor-host"></div>
@@ -98,6 +102,11 @@ const previewEmpty = document.getElementById('preview-empty')!;
 const tocTree = document.getElementById('toc-tree')!;
 const tocEmpty = document.getElementById('toc-empty')!;
 const tocExpand = document.getElementById('toc-expand')!;
+const tocCollapse = document.getElementById('toc-collapse')!;
+const tocRail = document.getElementById('toc-rail')!;
+const tocSidebar = document.getElementById('toc-sidebar')!;
+const tocPopover = document.getElementById('toc-popover')!;
+const tocPopoverTree = tocPopover.querySelector('.toc-tree') as HTMLElement;
 
 type TocNode = { level: number; text: string; line: number; ordinal: number; children: TocNode[]; expanded: boolean };
 let tocRoots: TocNode[] = [];
@@ -107,10 +116,10 @@ function parseToc(markdownText: string): TocNode[] {
   const stack: TocNode[] = [];
   let fenced = false;
   let ordinal = 0;
-  markdownText.split('\\n').forEach((line, lineIndex) => {
-    if (/^\\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
+  markdownText.split('\n').forEach((line, lineIndex) => {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
     if (fenced) return;
-    const match = /^(\\s{0,3})(#{1,6})\\s+(.+?)\\s*#*\\s*$/.exec(line);
+    const match = /^(\s{0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (!match) return;
     const node: TocNode = { level: match[2].length, text: match[3].trim(), line: lineIndex, ordinal: ordinal++, children: [], expanded: false };
     while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();
@@ -126,12 +135,9 @@ function escapeHtml(text: string): string {
 
 function flattenToc(nodes: TocNode[]): TocNode[] { return nodes.flatMap((node) => [node, ...flattenToc(node.children)]); }
 
-function renderToc() {
-  tocTree.innerHTML = '';
-  const all = flattenToc(tocRoots);
-  tocEmpty.hidden = all.length > 0;
-  tocExpand.disabled = all.length === 0;
-  const build = (nodes: TocNode[], parent: HTMLElement) => nodes.forEach((node) => {
+function buildTocRows(nodes: TocNode[]): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const build = (list: TocNode[], parent: HTMLElement) => list.forEach((node) => {
     const row = document.createElement('div');
     row.className = 'toc-row';
     row.style.setProperty('--toc-level', String(node.level - 1));
@@ -146,7 +152,19 @@ function renderToc() {
     row.append(toggle, link); parent.append(row);
     if (node.children.length && node.expanded) { const children = document.createElement('div'); children.className = 'toc-children'; build(node.children, children); parent.append(children); }
   });
-  build(tocRoots, tocTree);
+  build(nodes, frag);
+  return frag;
+}
+
+function renderToc() {
+  const all = flattenToc(tocRoots);
+  tocEmpty.hidden = all.length > 0;
+  tocExpand.disabled = all.length === 0;
+  const frag = buildTocRows(tocRoots);
+  tocTree.replaceChildren(frag);
+  // The popover mirrors the sidebar tree; it is rendered only while
+  // collapsed, and gets the same rows so clicks behave identically.
+  tocPopoverTree.replaceChildren(buildTocRows(tocRoots));
 }
 
 function jumpToTocNode(node: TocNode) {
@@ -162,6 +180,50 @@ function jumpToTocNode(node: TocNode) {
 
 function updateToc(markdownText: string) { tocRoots = parseToc(markdownText); renderToc(); }
 tocExpand.addEventListener('click', () => { flattenToc(tocRoots).forEach((node) => { if (node.children.length) node.expanded = true; }); renderToc(); });
+
+// ---------------------------------------------------------------- toc collapse
+
+// Whole-sidebar collapse: the rail (a narrow strip) stays visible so the
+// outline can be restored with one click; hovering the rail shows a floating
+// popover with the full tree. The state is per-session only.
+let tocCollapsed = false;
+let tocPopoverTimer: number | null = null;
+
+function setTocCollapsed(collapsed: boolean) {
+  tocCollapsed = collapsed;
+  pane.classList.toggle('toc-collapsed', collapsed);
+  tocCollapse.textContent = collapsed ? '›' : '‹';
+  tocCollapse.title = collapsed ? '展开目录栏' : '折叠目录栏';
+  tocCollapse.setAttribute('aria-label', tocCollapse.title);
+}
+
+function showTocPopover(show: boolean) {
+  if (tocPopoverTimer !== null) window.clearTimeout(tocPopoverTimer);
+  // Small delay so the popover does not flicker on plain rail hover.
+  tocPopoverTimer = window.setTimeout(() => {
+    tocPopoverTimer = null;
+    tocPopover.classList.toggle('toc-popover-visible', show);
+  }, show ? 60 : 220);
+}
+
+tocRail.addEventListener('click', () => setTocCollapsed(false));
+tocCollapse.addEventListener('click', () => setTocCollapsed(true));
+
+// Popover visibility: only while collapsed, tied to hovering the rail.
+// The popover sits to the right of the rail; moving the cursor into it keeps
+// the sidebar's hover area (see CSS .toc-popover-visible rule).
+tocRail.addEventListener('mouseenter', () => showTocPopover(true));
+tocRail.addEventListener('mouseleave', () => showTocPopover(false));
+tocSidebar.addEventListener('mouseleave', () => showTocPopover(false));
+// Moving the cursor from the rail into the popover must keep it open: the
+// rail's mouseleave would otherwise schedule a hide while the cursor is
+// already inside the popover.
+tocPopover.addEventListener('mouseenter', () => showTocPopover(true));
+tocPopover.addEventListener('mouseleave', () => showTocPopover(false));
+// Selecting a heading from the popover jumps and dismisses the popover.
+tocPopover.addEventListener('click', () => showTocPopover(false));
+
+// ---------------------------------------------------------------- toc end
 
 // ---------------------------------------------------------------- theme
 
