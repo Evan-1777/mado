@@ -12,6 +12,19 @@
 </head>
 <body>
     <div id="app"></div>
+    <!-- Unsaved-changes confirm: native <dialog> gives us Esc/cancel, focus
+         trapping and top-layer stacking over the preview iframe for free. -->
+    <dialog id="close-dialog" aria-labelledby="close-dialog-title">
+        <form method="dialog">
+            <h2 id="close-dialog-title">未保存的修改</h2>
+            <p id="close-dialog-msg">是否保存对该文件的修改？</p>
+            <div class="dialog-actions">
+                <button type="submit" value="cancel">取消</button>
+                <button type="submit" value="no">否</button>
+                <button type="submit" value="yes" class="primary">是</button>
+            </div>
+        </form>
+    </dialog>
     <script src="./app.js"></script>
 </body>
 </html>

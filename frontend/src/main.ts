@@ -7,8 +7,8 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty, ConfirmDiscard,
-  ConfirmSave, ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog,
+  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty,
+  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -289,10 +289,29 @@ async function newFile() {
 
 async function confirmDiscard(): Promise<boolean> {
   if (!dirty) return true;
-  return ConfirmDiscard();
+  const choice = await askUnsaved();
+  if (choice === 'no') return true; // discard and proceed
+  if (choice === 'cancel') return false;
+  return saveCurrent(); // "yes": proceed only when the save succeeded
 }
 
 // ---------------------------------------------------------------- close flow
+
+// In-app unsaved-changes confirm. The native <dialog> in index.html handles
+// Esc (cancel) and focus trapping; form method="dialog" sets returnValue to
+// the clicked button's value before the close event fires.
+function askUnsaved(): Promise<'yes' | 'no' | 'cancel'> {
+  const dlg = document.getElementById('close-dialog') as HTMLDialogElement;
+  if (!dlg || dlg.open) return Promise.resolve('cancel');
+  return new Promise((resolve) => {
+    const onClose = () => {
+      dlg.removeEventListener('close', onClose);
+      resolve(dlg.returnValue === 'yes' || dlg.returnValue === 'no' ? dlg.returnValue : 'cancel');
+    };
+    dlg.addEventListener('close', onClose);
+    dlg.showModal();
+  });
+}
 
 // Title-bar close button: clean state exits immediately, dirty state runs the
 // save confirmation.
@@ -306,15 +325,25 @@ async function requestClose() {
 
 // Shared confirmation for both close paths (title bar + Alt+F4). "yes" saves
 // then quits (a failed save keeps the window open), "no" quits as-is, and
-// "cancel" — including the dialog X / Esc — leaves everything untouched.
+// "cancel" — including Esc — leaves everything untouched. The guard ignores
+// re-entrant close attempts while the dialog is already up (e.g. Alt+F4
+// twice): they would otherwise call showModal on an open dialog.
+let closePending = false;
+
 async function handleCloseFlow() {
-  const choice = await ConfirmSave();
-  if (choice === 'cancel') return;
-  if (choice === 'yes') {
-    const ok = await saveCurrent();
-    if (!ok) return; // save failed or user cancelled Save As: keep editing
+  if (closePending) return;
+  closePending = true;
+  try {
+    const choice = await askUnsaved();
+    if (choice === 'cancel') return;
+    if (choice === 'yes') {
+      const ok = await saveCurrent();
+      if (!ok) return; // save failed or user cancelled Save As: keep editing
+    }
+    ForceQuit();
+  } finally {
+    closePending = false;
   }
-  ForceQuit();
 }
 
 // Alt+F4 / taskbar close: OnBeforeClose (Go) blocks the close and defers the

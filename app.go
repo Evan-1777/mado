@@ -114,26 +114,6 @@ func (a *App) SetTitle(title string) {
 	runtime.EventsEmit(a.ctx, "title", title)
 }
 
-// ConfirmDiscard asks the user to confirm discarding unsaved changes.
-// Returns true when it is safe to proceed.
-func (a *App) ConfirmDiscard() bool {
-	if a.ctx == nil {
-		return true
-	}
-	answer, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "Mado",
-		Message:       "Discard unsaved changes?",
-		Buttons:       []string{"Discard", "Cancel"},
-		DefaultButton: "Cancel",
-		CancelButton:  "Cancel",
-	})
-	if err != nil {
-		return true
-	}
-	return answer == "Discard"
-}
-
 // SetStartupFile records the file path passed on the command line (used by
 // Windows "Open with" file association launches).
 func (a *App) SetStartupFile(path string) {
@@ -151,34 +131,6 @@ func (a *App) GetStartupFile() string {
 // would be lost.
 func (a *App) SetDirty(dirty bool) {
 	a.dirty = dirty
-}
-
-// ConfirmSave asks the user whether to save unsaved changes before closing.
-// Returns "yes" (save and close), "no" (close without saving) or "cancel"
-// (keep editing). The dialog X / Esc maps to "cancel" via CancelButton.
-func (a *App) ConfirmSave() string {
-	if a.ctx == nil || !a.dirty {
-		return "no"
-	}
-	answer, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "Mado",
-		Message:       "是否保存该文件的修改？",
-		Buttons:       []string{"是", "否", "取消"},
-		DefaultButton: "是",
-		CancelButton:  "取消",
-	})
-	if err != nil {
-		return "cancel" // never lose data on dialog failure
-	}
-	switch answer {
-	case "是":
-		return "yes"
-	case "否":
-		return "no"
-	default:
-		return "cancel"
-	}
 }
 
 // ForceQuit exits without any prompt. The quitting flag makes the
