@@ -258,9 +258,17 @@ function hookPreviewLinks() {
     e.preventDefault(); // any navigation destroys the preview document
     const href = a.getAttribute('href') ?? '';
     if (href.startsWith('#') && href.length > 1) {
-      // goldmark emits literal heading ids and matching literal hrefs, so a
-      // plain id lookup is exact. Unknown anchors: blocked above, no scroll.
-      doc.getElementById(href.slice(1))?.scrollIntoView({ behavior: 'smooth' });
+      const fragment = href.slice(1);
+      let id = fragment;
+      try {
+        // goldmark URL-encodes non-ASCII href fragments, while heading ids
+        // remain Unicode in the DOM. Decode the URL representation before
+        // looking up the target element.
+        id = decodeURIComponent(fragment);
+      } catch {
+        // A literal or malformed '%' is still a valid DOM id candidate.
+      }
+      doc.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     }
   });
 }

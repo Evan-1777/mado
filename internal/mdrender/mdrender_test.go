@@ -1,6 +1,10 @@
 package mdrender
 
-import "testing"
+import (
+	"net/url"
+	"regexp"
+	"testing"
+)
 
 // TestRenderBold verifies **b** produces a <strong> element.
 func TestRenderBold(t *testing.T) {
@@ -106,6 +110,33 @@ func TestRenderHeadingIDs(t *testing.T) {
 	}
 	if contains(out, `id="heading"`) {
 		t.Errorf("fallback id \"heading\" should not appear: %q", out)
+	}
+}
+
+// TestRenderUnicodeTOCLinkTarget covers the complete renderer boundary behind
+// preview TOC clicks: goldmark URL-encodes a Unicode href fragment, while the
+// target heading id remains Unicode in the DOM. The preview click handler must
+// decode the former before looking up the latter.
+func TestRenderUnicodeTOCLinkTarget(t *testing.T) {
+	const id = "一先搞清楚-wsl-是什么"
+	out, err := Render("[一、先搞清楚 WSL 是什么](#" + id + ")\n\n## 一、先搞清楚 WSL 是什么\n")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	match := regexp.MustCompile(`href="(#.*?)"`).FindStringSubmatch(out)
+	if len(match) != 2 {
+		t.Fatalf("TOC link: output missing href fragment: %q", out)
+	}
+	fragment, err := url.PathUnescape(match[1][1:])
+	if err != nil {
+		t.Fatalf("decode href fragment %q: %v", match[1], err)
+	}
+	if fragment != id {
+		t.Fatalf("TOC target: decoded fragment %q, want %q", fragment, id)
+	}
+	if !contains(out, `id="`+id+`"`) {
+		t.Fatalf("TOC target: output missing id %q: %q", id, out)
 	}
 }
 
