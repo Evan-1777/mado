@@ -15,7 +15,10 @@ import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, Wi
 // ---------------------------------------------------------------- helpers
 
 function baseName(p: string): string {
-  const parts = p.split(/[\/]/);
+  // A regex literal, not a string: /[\\/]/ matches a literal backslash and a
+  // forward slash. Do not "un-escape" it to /[\/]/ — that drops backslash
+  // splitting and Windows paths (C:\dir\file.md) no longer yield a basename.
+  const parts = p.split(/[\\/]/);
   return parts[parts.length - 1] || p;
 }
 
@@ -163,8 +166,9 @@ function renderToc() {
   const frag = buildTocRows(tocRoots);
   tocTree.replaceChildren(frag);
   // The popover mirrors the sidebar tree; it is rendered only while
-  // collapsed, and gets the same rows so clicks behave identically.
-  tocPopoverTree.replaceChildren(buildTocRows(tocRoots));
+  // collapsed. Both hosts receive the SAME fragment, so the trees are the
+  // same DOM nodes (one build, no discarded per-edit trees).
+  tocPopoverTree.replaceChildren(frag);
 }
 
 function jumpToTocNode(node: TocNode) {
