@@ -104,6 +104,7 @@ docs/                    # 用户文档
 - 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；v1.2 已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
 - 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端」
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
+- 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
 - 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
 
 ## 7. 外部依赖与集成
@@ -120,6 +121,7 @@ docs/                    # 用户文档
 - 2026-08-14 选 CodeMirror 6 而非 Monaco——理由：Monaco 200KB+ 过重，cm6 增量解析且专业级
 - 2026-08-14 选 iframe+srcdoc 首帧骨架 + 内原地更新而非 document.write——理由：隔离 CSS、防弹跳；首帧 srcdoc 引导，后续原地更新保留滚动、无闪烁（2026-08-15 修正：初始实现整体重设 srcdoc 导致编辑时预览闪烁跳顶，实测后改为原地更新，见 §6）
 - 2026-08-15 预览锚点链接采用父侧 click 拦截 + scrollIntoView 而非帧内脚本或放宽 sandbox——理由：sandbox 无 allow-scripts 帧内脚本不可用，allow-same-origin 已允许跨帧 DOM；Chromium 对 about:srcdoc fragment 导航会替换帧文档致黑屏，任何导航都毁掉原地更新模型，故外链一并阻断（外链用系统浏览器打开需新增 Go 绑定，非本 bug 范围，未做）
+- 2026-08-16 标题 id 采用 GitHub 风格 slug 生成器（中文保留、ASCII 小写、空白转 `-`、全角标点删除、重复加 `-N`）而非 goldmark 内置生成器——理由：内置 `ids.Generate` 丢弃全部非 ASCII，中文标题 id 退化，目录链接（如 `#一先搞清楚-wsl-是什么`）永远查不到；实测 GitHub 对 `动手学深度学习（Dive into Deep Learning，D2L.ai）` 生成 `动手学深度学习dive-into-deep-learningd2lai`，规则与用户手写目录格式一致；纯 ASCII 标题在新旧规则下产物相同，无兼容性变化
 - 2026-08-15 测试配置目录隔离采用 t.Setenv 同设 APPDATA + XDG_CONFIG_HOME 而非仅重写 APPDATA——理由：os.UserConfigDir 跨平台读取不同环境变量，双设一处覆盖两端，避免 Linux 上测试污染真实 ~/.config
 - 2026-08-15 包管理器 pnpm → npm（本地与 CI 一致切换）——理由：新开发环境无 pnpm，统一链路避免双锁文件漂移
 - 2026-08-14 关闭确认采用「Go emit request-close → 前端统一处理」而非 Go 同步弹窗——理由：保存需编辑器内容（仅前端持有），旧双弹窗链路（QuitApp→Quit→OnBeforeClose→quitConfirm 二次弹窗且默认取消）导致「点确认关不掉」
