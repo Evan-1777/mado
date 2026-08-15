@@ -203,19 +203,40 @@ async function cssForTheme(): Promise<string> {
   return css;
 }
 
+// Preview updates happen in place inside the iframe (swap the <style> text
+// and the <article> innerHTML) so the document is never reloaded. Replacing
+// srcdoc would re-navigate the iframe: the preview would flash white and its
+// scroll position would reset to the top on every edit. The first render
+// still bootstraps the frame with a srcdoc skeleton; later edits update it.
 function writePreview(html: string) {
-  const doc = `<!DOCTYPE html>
+  const doc = () => `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <style>${previewCss}</style>
 </head>
 <body>
-<article>${html}</article>
+<article id="md-content">${html}</article>
 </body>
 </html>`;
-  previewIframe.srcdoc = doc;
   previewEmpty.hidden = html.trim().length > 0;
+  const win = previewIframe.contentWindow;
+  const frameDoc = win && win.document;
+  const content = frameDoc && frameDoc.getElementById('md-content');
+  const style = frameDoc && frameDoc.head.querySelector('style');
+  if (!content || !style) {
+    // First render, or the frame was reset underneath us: rebuild the
+    // skeleton. srcdoc bootstrap keeps the sandboxed same-origin model.
+    previewIframe.srcdoc = doc();
+    return;
+  }
+  try {
+    style.textContent = previewCss;   // CSS first: no stale-style flash
+    content.innerHTML = html;
+  } catch {
+    // Cross-origin / unexpected frame state: fall back to a full rebuild.
+    previewIframe.srcdoc = doc();
+  }
 }
 
 // ---------------------------------------------------------------- file ops
