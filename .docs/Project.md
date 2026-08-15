@@ -39,7 +39,7 @@
   - 开发：`wails dev`（wails CLI 在 `$(go env GOPATH)/bin`，需在 PATH 中；本机已 `go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
   - 打包：`wails build` → `build/bin/mado.exe`
   - ★ 易错：`wails build` 会先跑 `frontend:install`（pnpm install）与 `frontend:build`（pnpm build），node_modules 缺失时自动补装
-  - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + pnpm + Node 22 + wails CLI v2.14.0 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发 → 同一构建链 → `gh release create` 发布 release 并附 exe）。SCOPE 约定不在本机做全量构建，验收以云端 workflow 结果为准；本机验证手段为 go build/vet/test 与前端 esbuild 语法检查（`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`，零产物，stdout 丢弃）
+  - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + pnpm + Node 22 + wails CLI v2.14.0 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input，如 `v1.2.0`）→ 同一构建链 → 校验版本号格式 → `gh release create` 发布 release 并附 exe）。SCOPE 约定不在本机做全量构建，验收以云端 workflow 结果为准；本机验证手段为 go build/vet/test 与前端 esbuild 语法检查（`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`，零产物，stdout 丢弃）
 - **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证（Plan §5 验收走查）。★ 零产物 esbuild 验证必须加 `--loader:.css=empty`：不加输出路径时 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`
 
 ## 3. 目录结构与模块职责
