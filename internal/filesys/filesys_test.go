@@ -30,12 +30,23 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	}
 }
 
+// setUserConfigDir points os.UserConfigDir at a per-test directory on every
+// platform: Windows reads %AppData%, Linux reads XDG_CONFIG_HOME — both are
+// set so the override works wherever the suite runs. t.Setenv restores the
+// originals automatically, so tests can never leak state into the real
+// user config dir (~/.config/Mado on Linux).
+func setUserConfigDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("APPDATA", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	return dir
+}
+
 // TestLastFilePersistence verifies SetLastFile/GetLastFile survive across
 // calls and live in the shared %APPDATA%/Mado/settings.json file.
 func TestLastFilePersistence(t *testing.T) {
-	orig := os.Getenv("APPDATA")
-	t.Cleanup(func() { os.Setenv("APPDATA", orig) })
-	os.Setenv("APPDATA", t.TempDir())
+	setUserConfigDir(t)
 
 	path := filepath.Join(t.TempDir(), "note.md")
 	if err := SetLastFile(path); err != nil {
@@ -53,9 +64,7 @@ func TestLastFilePersistence(t *testing.T) {
 // TestGetLastFileFirstRun verifies first launch (no settings file) returns a
 // welcome document that is persisted to disk.
 func TestGetLastFileFirstRun(t *testing.T) {
-	orig := os.Getenv("APPDATA")
-	t.Cleanup(func() { os.Setenv("APPDATA", orig) })
-	os.Setenv("APPDATA", t.TempDir())
+	setUserConfigDir(t)
 
 	path, err := GetLastFile()
 	if err != nil {

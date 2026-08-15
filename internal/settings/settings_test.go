@@ -1,15 +1,16 @@
 package settings
 
 import (
-	"os"
 	"testing"
 )
 
 func withTempAPPDATA(t *testing.T) {
 	t.Helper()
-	orig := os.Getenv("APPDATA")
-	os.Setenv("APPDATA", t.TempDir())
-	t.Cleanup(func() { os.Setenv("APPDATA", orig) })
+	dir := t.TempDir()
+	// Windows reads %AppData%, Linux reads XDG_CONFIG_HOME — set both so the
+	// override isolates the real user config dir on every platform.
+	t.Setenv("APPDATA", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 }
 
 // TestDefaultTheme verifies first launch defaults to dark.
