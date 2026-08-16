@@ -114,9 +114,9 @@ function parseToc(markdownText: string): TocNode[] {
   let fenced = false;
   let ordinal = 0;
   markdownText.split('\n').forEach((line, lineIndex) => {
-    if (/^\\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
     if (fenced) return;
-    const match = /^(\\s{0,3})(#{1,6})\\s+(.+?)\\s*#*\\s*$/.exec(line);
+    const match = /^(\s{0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (!match) return;
     const node: TocNode = { level: match[2].length, text: match[3].trim(), line: lineIndex, ordinal: ordinal++, children: [], expanded: false };
     while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();

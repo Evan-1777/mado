@@ -106,7 +106,7 @@ docs/                    # 用户文档
 - 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端」
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
 - 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
-- 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，大量标题不识别——已修复为 `split('\n')`（2026-08-18）」
+- 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，大量标题不识别——已修复为 `split('\n')`（2026-08-18）；同次修复遗漏正则内 `\\s` 转义错误，导致 fenced code block 检测与 ATX 标题匹配失败（`/^\\\\s*(```|~~~)/` 与 `/^(\\\\s{0,3})(#{1,6})\\\\s+/` 中 `\\\\s` 匹配字面量反斜杠+s 而非空白字符类），代码块内 `#` 被误识别为标题、真实标题不被识别——已补充修复为 `\\s`（2025-06-01）」
 - 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
 
 ## 7. 外部依赖与集成
