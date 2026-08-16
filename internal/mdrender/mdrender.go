@@ -70,12 +70,13 @@ var _ parser.IDs = (*slugIDs)(nil)
 // Generate implements parser.IDs: slugifies value and disambiguates
 // duplicates with a -N suffix, mirroring goldmark's built-in ids behavior.
 func (s *slugIDs) Generate(value []byte, _ ast.NodeKind) []byte {
-	id := slugify(value)
+	base := slugify(value)
+	id := base
 	if s.seen == nil {
 		s.seen = map[string]bool{}
 	}
 	for i := 1; s.seen[id]; i++ {
-		id = fmt.Sprintf("%s-%d", slugify(value), i)
+		id = fmt.Sprintf("%s-%d", base, i)
 	}
 	s.seen[id] = true
 	return []byte(id)
