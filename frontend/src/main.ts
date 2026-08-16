@@ -75,7 +75,11 @@ const pane = document.createElement('main');
 pane.className = 'pane';
 pane.innerHTML = `
   <aside class="toc-sidebar" id="toc-sidebar" aria-label="Document outline">
-    <div class="toc-header"><span>目录</span><button id="toc-expand" type="button">展开全部</button></div>
+    <div class="toc-header">
+      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="折叠侧栏">‹</button>
+      <span>目录</span>
+      <button id="toc-expand" type="button">展开全部</button>
+    </div>
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
   </aside>
@@ -95,9 +99,11 @@ const statusEl = document.getElementById('status-text')!;
 const editorHost = document.getElementById('editor-host')!;
 const previewIframe = document.getElementById('preview') as HTMLIFrameElement;
 const previewEmpty = document.getElementById('preview-empty')!;
+const tocSidebar = document.getElementById('toc-sidebar')!;
 const tocTree = document.getElementById('toc-tree')!;
 const tocEmpty = document.getElementById('toc-empty')!;
 const tocExpand = document.getElementById('toc-expand')!;
+const tocCollapse = document.getElementById('toc-collapse')!;
 
 type TocNode = { level: number; text: string; line: number; ordinal: number; children: TocNode[]; expanded: boolean };
 let tocRoots: TocNode[] = [];
@@ -107,7 +113,7 @@ function parseToc(markdownText: string): TocNode[] {
   const stack: TocNode[] = [];
   let fenced = false;
   let ordinal = 0;
-  markdownText.split('\\n').forEach((line, lineIndex) => {
+  markdownText.split('\n').forEach((line, lineIndex) => {
     if (/^\\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
     if (fenced) return;
     const match = /^(\\s{0,3})(#{1,6})\\s+(.+?)\\s*#*\\s*$/.exec(line);
@@ -162,6 +168,10 @@ function jumpToTocNode(node: TocNode) {
 
 function updateToc(markdownText: string) { tocRoots = parseToc(markdownText); renderToc(); }
 tocExpand.addEventListener('click', () => { flattenToc(tocRoots).forEach((node) => { if (node.children.length) node.expanded = true; }); renderToc(); });
+tocCollapse.addEventListener('click', () => {
+  tocSidebar.classList.toggle('collapsed');
+  tocCollapse.textContent = tocSidebar.classList.contains('collapsed') ? '›' : '‹';
+});
 
 // ---------------------------------------------------------------- theme
 

@@ -269,6 +269,17 @@ body {
   background: var(--chrome-bg);
   border-right: 1px solid var(--border);
   overflow: hidden;
+  transition: flex-basis 0.2s ease, min-width 0.2s ease;
+}
+.toc-sidebar.collapsed {
+  flex-basis: 40px;
+  min-width: 40px;
+}
+.toc-sidebar.collapsed .toc-header > span,
+.toc-sidebar.collapsed .toc-header > #toc-expand,
+.toc-sidebar.collapsed .toc-tree,
+.toc-sidebar.collapsed .toc-empty {
+  display: none;
 }
 .pane.editor-only .toc-sidebar,
 .pane.preview-only .toc-sidebar { display: flex; }
@@ -278,12 +289,31 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px 0 18px;
+  padding: 0 14px 0 4px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .04em;
+}
+.toc-collapse-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+.toc-collapse-btn:hover {
+  background: var(--surface-hover);
 }
 .toc-header button {
   border: 0;
