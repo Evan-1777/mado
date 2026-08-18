@@ -65,6 +65,14 @@ const GLYPH_THEME = `<svg width="15" height="15" viewBox="0 0 16 16" fill="curre
   <path d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 1.25v11A5.5 5.5 0 0 1 8 2.5z"/>
 </svg>`;
 
+const GLYPH_CHEVRON_DOWN = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 6l4 4 4-4"/>
+</svg>`;
+
+const GLYPH_CHEVRON_RIGHT = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 4l4 4-4 4"/>
+</svg>`;
+
 const titlebar = document.createElement('header');
 titlebar.className = 'titlebar';
 titlebar.innerHTML = `
@@ -96,11 +104,11 @@ toolbar.innerHTML = `
 const pane = document.createElement('main');
 pane.className = 'pane';
 pane.innerHTML = `
-  <aside class="toc-sidebar" id="toc-sidebar" aria-label="Document outline">
+  <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="Document outline">
     <div class="toc-header">
-      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="折叠侧栏">‹</button>
-      <span>目录</span>
-      <span class="toc-count" id="toc-count"></span>
+      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="展开侧栏">›</button>
+      <span class="toc-title">目录</span>
+      <button class="toc-toggle-all-btn" id="toc-toggle-all" type="button" title="全部收起">全部收起</button>
     </div>
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
@@ -124,27 +132,34 @@ const previewEmpty = document.getElementById('preview-empty')!;
 const tocSidebar = document.getElementById('toc-sidebar')!;
 const tocTree = document.getElementById('toc-tree')!;
 const tocEmpty = document.getElementById('toc-empty')!;
-const tocCount = document.getElementById('toc-count');
 const tocCollapse = document.getElementById('toc-collapse')!;
+const tocToggleAll = document.getElementById('toc-toggle-all') as HTMLButtonElement;
 
 // ---------------------------------------------------------------- outline / TOC
 
-type TocItem = {
+type TocNode = {
+  id: number;
   level: number;
   text: string;
   line: number;
   ordinal: number;
+  children: TocNode[];
+  expanded: boolean;
 };
 
-let currentTocItems: TocItem[] = [];
+let tocRoots: TocNode[] = [];
+let nodeById = new Map<number, TocNode>();
 let lastTocSignature = '';
 let tocDirty = false;
 
-function parseToc(markdownText: string): TocItem[] {
-  const items: TocItem[] = [];
+function parseToc(markdownText: string): TocNode[] {
+  const roots: TocNode[] = [];
+  const stack: TocNode[] = [];
   const lines = markdownText.split('\n');
   let fenced = false;
   let ordinal = 0;
+  let nextId = 0;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\s*(```|~~~)/.test(line)) {
@@ -154,73 +169,169 @@ function parseToc(markdownText: string): TocItem[] {
     if (fenced) continue;
     const match = /^(\s{0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (!match) continue;
-    items.push({
+
+    const node: TocNode = {
+      id: nextId++,
       level: match[2].length,
       text: match[3].trim(),
       line: i,
       ordinal: ordinal++,
-    });
+      children: [],
+      expanded: true, // Default all outline nodes expanded
+    };
+
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
+      stack.pop();
+    }
+    if (stack.length > 0) {
+      stack[stack.length - 1].children.push(node);
+    } else {
+      roots.push(node);
+    }
+    stack.push(node);
   }
-  return items;
+  return roots;
+}
+
+function flattenToc(nodes: TocNode[]): TocNode[] {
+  const result: TocNode[] = [];
+  function traverse(list: TocNode[]) {
+    for (const n of list) {
+      result.push(n);
+      if (n.children.length > 0) {
+        traverse(n.children);
+      }
+    }
+  }
+  traverse(nodes);
+  return result;
+}
+
+function getAllParentNodes(nodes: TocNode[]): TocNode[] {
+  return flattenToc(nodes).filter((n) => n.children.length > 0);
 }
 
 function isTocSidebarVisible(): boolean {
-  return pane.classList.contains('editor-only') || pane.classList.contains('preview-only');
+  return (pane.classList.contains('editor-only') || pane.classList.contains('preview-only')) &&
+    !tocSidebar.classList.contains('collapsed');
+}
+
+function updateToggleAllButton() {
+  const parentNodes = getAllParentNodes(tocRoots);
+  if (parentNodes.length === 0) {
+    tocToggleAll.disabled = true;
+    tocToggleAll.textContent = '全部收起';
+    tocToggleAll.title = '全部收起';
+    return;
+  }
+  tocToggleAll.disabled = false;
+  const hasExpanded = parentNodes.some((n) => n.expanded);
+  if (hasExpanded) {
+    tocToggleAll.textContent = '全部收起';
+    tocToggleAll.title = '全部收起';
+  } else {
+    tocToggleAll.textContent = '全部展开';
+    tocToggleAll.title = '全部展开';
+  }
+}
+
+function renderNode(node: TocNode, frag: DocumentFragment) {
+  const row = document.createElement('div');
+  row.className = `toc-row toc-level-${node.level}`;
+  row.dataset.id = String(node.id);
+
+  if (node.children.length > 0) {
+    const toggle = document.createElement('button');
+    toggle.className = 'toc-toggle';
+    toggle.type = 'button';
+    toggle.innerHTML = node.expanded ? GLYPH_CHEVRON_DOWN : GLYPH_CHEVRON_RIGHT;
+    toggle.title = node.expanded ? '折叠' : '展开';
+    toggle.setAttribute('aria-label', node.expanded ? '折叠子目录' : '展开子目录');
+    row.appendChild(toggle);
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'toc-toggle-spacer';
+    row.appendChild(spacer);
+  }
+
+  const badge = document.createElement('span');
+  badge.className = 'toc-badge';
+  badge.textContent = `H${node.level}`;
+
+  const link = document.createElement('span');
+  link.className = 'toc-link';
+  link.textContent = node.text;
+  link.title = node.text;
+
+  row.append(badge, link);
+  frag.appendChild(row);
+
+  if (node.children.length > 0 && node.expanded) {
+    for (const child of node.children) {
+      renderNode(child, frag);
+    }
+  }
 }
 
 function renderToc() {
   tocDirty = false;
   tocTree.innerHTML = '';
-  const count = currentTocItems.length;
+  const all = flattenToc(tocRoots);
+  const count = all.length;
   tocEmpty.hidden = count > 0;
-  if (tocCount) {
-    tocCount.textContent = count > 0 ? `${count}` : '';
-  }
+  updateToggleAllButton();
   if (count === 0) return;
 
   const frag = document.createDocumentFragment();
-  for (let i = 0; i < count; i++) {
-    const item = currentTocItems[i];
-    const row = document.createElement('div');
-    row.className = `toc-row toc-level-${item.level}`;
-    row.dataset.level = String(item.level);
-    row.dataset.index = String(i);
-
-    const badge = document.createElement('span');
-    badge.className = 'toc-badge';
-    badge.textContent = `H${item.level}`;
-
-    const link = document.createElement('span');
-    link.className = 'toc-link';
-    link.textContent = item.text;
-    link.title = item.text;
-
-    row.append(badge, link);
-    frag.appendChild(row);
+  for (const root of tocRoots) {
+    renderNode(root, frag);
   }
   tocTree.appendChild(frag);
 }
 
-function jumpToTocItem(item: TocItem) {
+function jumpToTocNode(node: TocNode) {
   const paneMode = pane.classList.contains('editor-only') ? 'editor' : 'preview';
   if (paneMode === 'editor') {
-    const line = cm.state.doc.line(Math.min(item.line + 1, cm.state.doc.lines));
+    const line = cm.state.doc.line(Math.min(node.line + 1, cm.state.doc.lines));
     cm.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
     cm.focus();
     return;
   }
   const headings = Array.from(previewIframe.contentDocument?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []);
-  headings[item.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  headings[node.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function updateToc(markdownText: string) {
-  const items = parseToc(markdownText);
-  const signature = items.map((it) => `${it.level}:${it.line}:${it.text}`).join('\x01');
+  const newRoots = parseToc(markdownText);
+  const allNew = flattenToc(newRoots);
+  const signature = allNew.map((it) => `${it.level}:${it.line}:${it.text}`).join('\x01');
   if (signature === lastTocSignature) {
     return; // Outline structure unchanged, avoid redundant DOM operations
   }
   lastTocSignature = signature;
-  currentTocItems = items;
+
+  if (tocRoots.length > 0) {
+    const prevMap = new Map<string, boolean>();
+    for (const oldNode of flattenToc(tocRoots)) {
+      if (oldNode.children.length > 0) {
+        prevMap.set(`${oldNode.level}:${oldNode.text}`, oldNode.expanded);
+      }
+    }
+    for (const newNode of allNew) {
+      if (newNode.children.length > 0) {
+        const prevExpanded = prevMap.get(`${newNode.level}:${newNode.text}`);
+        if (prevExpanded !== undefined) {
+          newNode.expanded = prevExpanded;
+        }
+      }
+    }
+  }
+
+  tocRoots = newRoots;
+  nodeById.clear();
+  for (const n of allNew) {
+    nodeById.set(n.id, n);
+  }
 
   if (!isTocSidebarVisible()) {
     tocDirty = true;
@@ -229,20 +340,44 @@ function updateToc(markdownText: string) {
   renderToc();
 }
 
-// Delegated single click listener on tocTree
+// Delegated single click listener on tocTree: handles both toggle chevron and row jump
 tocTree.addEventListener('click', (e) => {
-  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.toc-row');
+  const target = e.target as HTMLElement | null;
+  const row = target?.closest<HTMLElement>('.toc-row');
   if (!row) return;
-  const idx = parseInt(row.dataset.index ?? '-1', 10);
-  const item = currentTocItems[idx];
-  if (item) {
-    jumpToTocItem(item);
+  const id = parseInt(row.dataset.id ?? '-1', 10);
+  const node = nodeById.get(id);
+  if (!node) return;
+
+  const toggleBtn = target?.closest<HTMLElement>('.toc-toggle');
+  if (toggleBtn) {
+    node.expanded = !node.expanded;
+    renderToc();
+    return;
   }
+
+  jumpToTocNode(node);
 });
 
 tocCollapse.addEventListener('click', () => {
   tocSidebar.classList.toggle('collapsed');
-  tocCollapse.textContent = tocSidebar.classList.contains('collapsed') ? '›' : '‹';
+  const isCollapsed = tocSidebar.classList.contains('collapsed');
+  tocCollapse.textContent = isCollapsed ? '›' : '‹';
+  tocCollapse.title = isCollapsed ? '展开侧栏' : '折叠侧栏';
+  if (!isCollapsed && tocDirty) {
+    renderToc();
+  }
+});
+
+tocToggleAll.addEventListener('click', () => {
+  const parentNodes = getAllParentNodes(tocRoots);
+  if (parentNodes.length === 0) return;
+  const hasExpanded = parentNodes.some((n) => n.expanded);
+  const targetState = !hasExpanded;
+  parentNodes.forEach((n) => {
+    n.expanded = targetState;
+  });
+  renderToc();
 });
 
 // ---------------------------------------------------------------- theme
@@ -548,6 +683,8 @@ function setDirty(v: boolean) {
 
 async function loadContent(path: string, content: string) {
   currentFile = path;
+  lastTocSignature = '';
+  tocRoots = [];
   // Dispatch first: the updateListener fires synchronously on docChanged and
   // would otherwise re-mark the freshly loaded file as dirty.
   cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: content } });
@@ -595,6 +732,8 @@ async function newFile() {
   const ok = await confirmDiscard();
   if (!ok) return;
   currentFile = '';
+  lastTocSignature = '';
+  tocRoots = [];
   cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: '' } });
   setDirty(false);
   setTitle('untitled');

@@ -73,7 +73,7 @@ docs/                    # 用户文档
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
-  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建平铺大纲（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构，以 H1~H6 六级深浅颜色令牌（`--toc-h1`~`--toc-h6`）与字重/徽章区分层级关系；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名比对实现增量过滤（无标题结构变化时零 DOM 重排），Split 模式下惰性跳过 DOM 生成，基于单一事件委托响应点击跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端统一接管视口 8 方向边缘检测（6px 阈值），跨 preview iframe 代理鼠标移动与按下事件，命中边缘时切换对应调整光标，点击时发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
@@ -118,6 +118,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-18 目录大纲恢复折叠功能并优化默认状态（默认全部展开、顶部全展/全收切换、侧栏默认 40px 收起）——理由：在保持无缩进 Flat 结构排版优势的同时恢复长文档章节折叠能力，默认收起侧栏减少初次加载视觉干扰，顶部一键切换提供全局折叠便利
 - 2026-08-18 标题栏动作按钮采用内联 SVG 矢量图标并移除文字标签——理由：与 Win11 系统标题栏视觉统一，Open（文件夹）与 Save（磁盘）图标符合真实功能，纯图标按钮节省水平空间
 - 2026-08-18 窗口缩放采用前端视口 8 方向边缘检测与跨 iframe 代理——理由：绕过 Wails 内置 outerWidth 偏差 bug，消除右/底边缘与 iframe 区域缩放死角
 - 2026-08-18 目录栏采用无缩进 Flat 色彩深度系统（`--toc-h1`~`--toc-h6`）与签名缓存/事件委托优化——理由：消除深层缩进导致的排版压缩与折行，大纲色彩明暗层次直观，编辑非标题内容零 DOM 开销
