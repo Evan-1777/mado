@@ -73,7 +73,8 @@ docs/                    # 用户文档
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
-  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建树（跳过 fenced code），记录标题层级、原文行号与渲染序号；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，默认全部折叠，可逐节点或一键全部展开，支持整栏折叠/展开；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`，Split 模式不占空间
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建平铺大纲（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构，以 H1~H6 六级深浅颜色令牌（`--toc-h1`~`--toc-h6`）与字重/徽章区分层级关系；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名比对实现增量过滤（无标题结构变化时零 DOM 重排），Split 模式下惰性跳过 DOM 生成，基于单一事件委托响应点击跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
+  - 窗口全向缩放：前端统一接管视口 8 方向边缘检测（6px 阈值），跨 preview iframe 代理鼠标移动与按下事件，命中边缘时切换对应调整光标，点击时发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
   - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
@@ -102,6 +103,7 @@ docs/                    # 用户文档
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
 - 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏或无响应——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档会被替换；即使阻断导航，goldmark 仍会将中文 href fragment 百分号编码，而标题 DOM id 保持 Unicode，直接 `getElementById(href.slice(1))` 查不到。修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），所有链接 preventDefault；fragment 先 `decodeURIComponent`（畸形编码回退原值）再 getElementById + scrollIntoView；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
+- 「Wails v2 Windows 无边框窗口右/下边缘无法缩放——原因：Wails 内置 JS 用 `window.outerWidth - e.clientX` 与 `window.outerHeight - e.clientY` 判定边缘，Windows WebView2 下 outer 包含不可见边框与系统度量导致永远不小于 borderThickness，且 preview iframe 吞掉右/下边缘鼠标事件；修复：前端设置 `wails.flags.enableResize = false`，改为基于 `window.innerWidth`/`innerHeight` 的自建 8 方向边缘检测，并在 preview iframe 文档内挂载坐标转换与鼠标事件代理，点击时直接 `WailsInvoke("resize:" + edge)`（2026-08-18）」
 - 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；v1.2 已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
 - 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端」
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
@@ -116,6 +118,9 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-18 标题栏动作按钮采用内联 SVG 矢量图标并移除文字标签——理由：与 Win11 系统标题栏视觉统一，Open（文件夹）与 Save（磁盘）图标符合真实功能，纯图标按钮节省水平空间
+- 2026-08-18 窗口缩放采用前端视口 8 方向边缘检测与跨 iframe 代理——理由：绕过 Wails 内置 outerWidth 偏差 bug，消除右/底边缘与 iframe 区域缩放死角
+- 2026-08-18 目录栏采用无缩进 Flat 色彩深度系统（`--toc-h1`~`--toc-h6`）与签名缓存/事件委托优化——理由：消除深层缩进导致的排版压缩与折行，大纲色彩明暗层次直观，编辑非标题内容零 DOM 开销
 - 2026-08-14 选 Wails v2 而非 Tauri——理由：SCOPE 禁 Rust 本机编译，Go 本机已装且性能/体积满足轻量诉求
 - 2026-08-14 选 goldmark（CommonMark+GFM+typographer）而非 comrak/markdown-it——理由：Go 原生零跨语言开销，性能强
 - 2026-08-14 选 vanilla TS 而非框架——理由：单视图双栏状态简单，零运行时开销

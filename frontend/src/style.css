@@ -22,6 +22,20 @@
   --titlebar-h: 44px;
   --radius: 10px;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", "Segoe UI", monospace;
+
+  /* Outline / TOC color depth hierarchy (Dark) */
+  --toc-h1: #f8fafc;
+  --toc-h2: #d1d8e6;
+  --toc-h3: #a3adc2;
+  --toc-h4: #798399;
+  --toc-h5: #5b6478;
+  --toc-h6: #444c5e;
+  --toc-badge-h1-bg: rgba(122, 162, 255, 0.22);
+  --toc-badge-h1-color: #9cbaff;
+  --toc-badge-h2-bg: rgba(122, 162, 255, 0.12);
+  --toc-badge-h2-color: #7aa2ff;
+  --toc-badge-bg: rgba(255, 255, 255, 0.06);
+  --toc-badge-color: #8a91a3;
 }
 
 :root[data-theme="light"] {
@@ -39,6 +53,20 @@
   --red: #d64545;
   --yellow: #b98a2e;
   --green: #2f9e5f;
+
+  /* Outline / TOC color depth hierarchy (Light) */
+  --toc-h1: #12141a;
+  --toc-h2: #323742;
+  --toc-h3: #565d6c;
+  --toc-h4: #788090;
+  --toc-h5: #99a2b3;
+  --toc-h6: #b5bcc8;
+  --toc-badge-h1-bg: rgba(53, 88, 214, 0.15);
+  --toc-badge-h1-color: #2646b8;
+  --toc-badge-h2-bg: rgba(53, 88, 214, 0.08);
+  --toc-badge-h2-color: #3558d6;
+  --toc-badge-bg: rgba(0, 0, 0, 0.05);
+  --toc-badge-color: #7d838e;
 }
 
 * {
@@ -112,8 +140,8 @@ body {
 .titlebar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 10px;
+  gap: 4px;
+  padding-right: 8px;
   margin-left: auto;
 }
 
@@ -168,20 +196,30 @@ body {
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  padding: 5px 9px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-btn svg {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .icon-btn:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+.icon-btn:active {
+  background: var(--surface-hover);
+  filter: brightness(0.9);
 }
 
 .icon-btn.active {
@@ -191,7 +229,9 @@ body {
 }
 
 .icon-btn .glyph {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
@@ -263,7 +303,7 @@ body {
    the canvas uncluttered; full-screen modes reserve this rail on the left. */
 .toc-sidebar {
   display: none;
-  flex: 0 0 248px;
+  flex: 0 0 256px;
   min-width: 0;
   flex-direction: column;
   background: var(--chrome-bg);
@@ -276,7 +316,7 @@ body {
   min-width: 40px;
 }
 .toc-sidebar.collapsed .toc-header > span,
-.toc-sidebar.collapsed .toc-header > #toc-expand,
+.toc-sidebar.collapsed .toc-header > .toc-count,
 .toc-sidebar.collapsed .toc-tree,
 .toc-sidebar.collapsed .toc-empty {
   display: none;
@@ -289,7 +329,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px 0 4px;
+  padding: 0 14px 0 6px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font-size: 12px;
@@ -297,13 +337,13 @@ body {
   letter-spacing: .04em;
 }
 .toc-collapse-btn {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
   border-radius: 6px;
@@ -315,51 +355,103 @@ body {
 .toc-collapse-btn:hover {
   background: var(--surface-hover);
 }
-.toc-header button {
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
+.toc-count {
   font-size: 11px;
-  cursor: pointer;
-  padding: 4px 0;
+  color: var(--text-dim);
+  font-weight: 400;
 }
-.toc-header button:disabled { color: var(--text-dim); cursor: default; }
-.toc-tree { overflow: auto; padding: 10px 8px 18px; }
+.toc-tree {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .toc-row {
   display: flex;
   align-items: center;
-  min-height: 30px;
-  padding-left: calc(var(--toc-level) * 15px);
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 8px;
   border-radius: 6px;
-}
-.toc-row:hover { background: var(--surface-hover); }
-.toc-toggle, .toc-link {
-  border: 0;
-  background: transparent;
-  color: var(--text-dim);
-  font: inherit;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  user-select: none;
 }
-.toc-toggle {
-  width: 22px;
-  flex: 0 0 22px;
-  color: var(--accent);
-  font-size: 17px;
-  line-height: 1;
+.toc-row:hover {
+  background: var(--surface-hover);
 }
-.toc-toggle:disabled { color: var(--border); cursor: default; }
+.toc-row:active {
+  background: var(--accent-dim);
+}
+.toc-badge {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--toc-badge-bg);
+  color: var(--toc-badge-color);
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+.toc-row.toc-level-1 .toc-badge {
+  background: var(--toc-badge-h1-bg);
+  color: var(--toc-badge-h1-color);
+}
+.toc-row.toc-level-2 .toc-badge {
+  background: var(--toc-badge-h2-bg);
+  color: var(--toc-badge-h2-color);
+}
+
 .toc-link {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
   overflow: hidden;
-  padding: 6px 5px;
   text-align: left;
   white-space: nowrap;
   text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.toc-row.toc-level-1 {
+  color: var(--toc-h1);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.toc-row.toc-level-2 {
+  color: var(--toc-h2);
+  font-weight: 500;
   font-size: 12px;
 }
-.toc-row:hover .toc-link, .toc-link:focus-visible { color: var(--text); }
+.toc-row.toc-level-3 {
+  color: var(--toc-h3);
+  font-weight: 400;
+  font-size: 12px;
+}
+.toc-row.toc-level-4 {
+  color: var(--toc-h4);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+.toc-row.toc-level-5 {
+  color: var(--toc-h5);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+.toc-row.toc-level-6 {
+  color: var(--toc-h6);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.toc-row:hover .toc-link {
+  color: var(--text);
+}
+.toc-row:hover.toc-level-1 .toc-link {
+  color: var(--accent);
+}
 .toc-empty {
   padding: 18px;
   color: var(--text-dim);

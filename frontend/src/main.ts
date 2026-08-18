@@ -37,21 +37,43 @@ const app = document.getElementById('app')!;
 
 // ---------------------------------------------------------------- build UI
 
-// Segoe Fluent glyphs mirroring the Windows 11 caption buttons.
+// Fluent-style glyphs mirroring Windows 11 caption buttons.
 const GLYPH_MIN = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg>';
 const GLYPH_MAX = '<svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor"/></svg>';
 const GLYPH_RESTORE = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 2.5V.5h7v7h-2" fill="none" stroke="currentColor"/><rect x="0.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor"/></svg>';
 const GLYPH_CLOSE = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.1"/></svg>';
+
+const GLYPH_OPEN = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M1.5 3.5a1 1 0 0 1 1-1h3.75l1.5 2H13.5a1 1 0 0 1 1 1v1.5H1.5v-3.5z"/>
+  <path d="M1.5 7h13l-1.6 6.2a1 1 0 0 1-.97.8H2.57a1 1 0 0 1-.97-.8L1.5 7z"/>
+</svg>`;
+
+const GLYPH_SAVE = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M13.5 14.5H2.5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h8.5l3.5 3.5v8.5a1 1 0 0 1-1 1z"/>
+  <path d="M4.5 1.5v4h7v-4"/>
+  <path d="M4.5 9.5h7v5h-7z"/>
+</svg>`;
+
+const GLYPH_NEW = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M9 1.5H3.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6L9 1.5z"/>
+  <path d="M9 1.5V6h4.5"/>
+  <path d="M8 8.5v4"/>
+  <path d="M6 10.5h4"/>
+</svg>`;
+
+const GLYPH_THEME = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+  <path d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 1.25v11A5.5 5.5 0 0 1 8 2.5z"/>
+</svg>`;
 
 const titlebar = document.createElement('header');
 titlebar.className = 'titlebar';
 titlebar.innerHTML = `
   <div class="drag-zone"><span class="title" id="title">Mado</span></div>
   <div class="titlebar-actions">
-    <button class="icon-btn" id="btn-open" title="Open file (Ctrl+O)"><span class="glyph">\u2190</span><span>Open</span></button>
-    <button class="icon-btn" id="btn-save" title="Save (Ctrl+S)"><span class="glyph">\u21e7</span><span>Save</span></button>
-    <button class="icon-btn" id="btn-new" title="New file (Ctrl+N)"><span class="glyph">+</span><span>New</span></button>
-    <button class="icon-btn" id="btn-theme" title="Toggle theme"><span class="glyph">\u25d0</span><span>Theme</span></button>
+    <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件"><span class="glyph">${GLYPH_OPEN}</span></button>
+    <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
+    <button class="icon-btn" id="btn-new" title="新建文件 (Ctrl+N)" aria-label="新建文件">${GLYPH_NEW}</button>
+    <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
   </div>
   <div class="win-controls">
     <button class="win-btn win-min" title="Minimise" aria-label="Minimise"></button>
@@ -78,7 +100,7 @@ pane.innerHTML = `
     <div class="toc-header">
       <button class="toc-collapse-btn" id="toc-collapse" type="button" title="折叠侧栏">‹</button>
       <span>目录</span>
-      <button id="toc-expand" type="button">展开全部</button>
+      <span class="toc-count" id="toc-count"></span>
     </div>
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
@@ -102,72 +124,122 @@ const previewEmpty = document.getElementById('preview-empty')!;
 const tocSidebar = document.getElementById('toc-sidebar')!;
 const tocTree = document.getElementById('toc-tree')!;
 const tocEmpty = document.getElementById('toc-empty')!;
-const tocExpand = document.getElementById('toc-expand')!;
+const tocCount = document.getElementById('toc-count');
 const tocCollapse = document.getElementById('toc-collapse')!;
 
-type TocNode = { level: number; text: string; line: number; ordinal: number; children: TocNode[]; expanded: boolean };
-let tocRoots: TocNode[] = [];
+// ---------------------------------------------------------------- outline / TOC
 
-function parseToc(markdownText: string): TocNode[] {
-  const roots: TocNode[] = [];
-  const stack: TocNode[] = [];
+type TocItem = {
+  level: number;
+  text: string;
+  line: number;
+  ordinal: number;
+};
+
+let currentTocItems: TocItem[] = [];
+let lastTocSignature = '';
+let tocDirty = false;
+
+function parseToc(markdownText: string): TocItem[] {
+  const items: TocItem[] = [];
+  const lines = markdownText.split('\n');
   let fenced = false;
   let ordinal = 0;
-  markdownText.split('\n').forEach((line, lineIndex) => {
-    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return; }
-    if (fenced) return;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
     const match = /^(\s{0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!match) return;
-    const node: TocNode = { level: match[2].length, text: match[3].trim(), line: lineIndex, ordinal: ordinal++, children: [], expanded: false };
-    while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();
-    if (stack.length) stack[stack.length - 1].children.push(node); else roots.push(node);
-    stack.push(node);
-  });
-  return roots;
+    if (!match) continue;
+    items.push({
+      level: match[2].length,
+      text: match[3].trim(),
+      line: i,
+      ordinal: ordinal++,
+    });
+  }
+  return items;
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char] ?? char));
+function isTocSidebarVisible(): boolean {
+  return pane.classList.contains('editor-only') || pane.classList.contains('preview-only');
 }
-
-function flattenToc(nodes: TocNode[]): TocNode[] { return nodes.flatMap((node) => [node, ...flattenToc(node.children)]); }
 
 function renderToc() {
+  tocDirty = false;
   tocTree.innerHTML = '';
-  const all = flattenToc(tocRoots);
-  tocEmpty.hidden = all.length > 0;
-  tocExpand.disabled = all.length === 0;
-  const build = (nodes: TocNode[], parent: HTMLElement) => nodes.forEach((node) => {
+  const count = currentTocItems.length;
+  tocEmpty.hidden = count > 0;
+  if (tocCount) {
+    tocCount.textContent = count > 0 ? `${count}` : '';
+  }
+  if (count === 0) return;
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
+    const item = currentTocItems[i];
     const row = document.createElement('div');
-    row.className = 'toc-row';
-    row.style.setProperty('--toc-level', String(node.level - 1));
-    const toggle = document.createElement('button');
-    toggle.className = 'toc-toggle'; toggle.type = 'button'; toggle.disabled = node.children.length === 0;
-    toggle.textContent = node.children.length ? (node.expanded ? '⌄' : '›') : '·';
-    toggle.setAttribute('aria-label', node.expanded ? '折叠目录' : '展开目录');
-    const link = document.createElement('button'); link.className = 'toc-link'; link.type = 'button'; link.textContent = node.text;
-    link.title = node.text;
-    toggle.addEventListener('click', () => { node.expanded = !node.expanded; renderToc(); });
-    link.addEventListener('click', () => jumpToTocNode(node));
-    row.append(toggle, link); parent.append(row);
-    if (node.children.length && node.expanded) { const children = document.createElement('div'); children.className = 'toc-children'; build(node.children, children); parent.append(children); }
-  });
-  build(tocRoots, tocTree);
+    row.className = `toc-row toc-level-${item.level}`;
+    row.dataset.level = String(item.level);
+    row.dataset.index = String(i);
+
+    const badge = document.createElement('span');
+    badge.className = 'toc-badge';
+    badge.textContent = `H${item.level}`;
+
+    const link = document.createElement('span');
+    link.className = 'toc-link';
+    link.textContent = item.text;
+    link.title = item.text;
+
+    row.append(badge, link);
+    frag.appendChild(row);
+  }
+  tocTree.appendChild(frag);
 }
 
-function jumpToTocNode(node: TocNode) {
+function jumpToTocItem(item: TocItem) {
   const paneMode = pane.classList.contains('editor-only') ? 'editor' : 'preview';
   if (paneMode === 'editor') {
-    const line = cm.state.doc.line(Math.min(node.line + 1, cm.state.doc.lines));
-    cm.dispatch({ selection: { anchor: line.from }, scrollIntoView: true }); cm.focus();
+    const line = cm.state.doc.line(Math.min(item.line + 1, cm.state.doc.lines));
+    cm.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
+    cm.focus();
     return;
   }
   const headings = Array.from(previewIframe.contentDocument?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []);
-  headings[node.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  headings[item.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function updateToc(markdownText: string) { tocRoots = parseToc(markdownText); renderToc(); }
-tocExpand.addEventListener('click', () => { flattenToc(tocRoots).forEach((node) => { if (node.children.length) node.expanded = true; }); renderToc(); });
+function updateToc(markdownText: string) {
+  const items = parseToc(markdownText);
+  const signature = items.map((it) => `${it.level}:${it.line}:${it.text}`).join('\x01');
+  if (signature === lastTocSignature) {
+    return; // Outline structure unchanged, avoid redundant DOM operations
+  }
+  lastTocSignature = signature;
+  currentTocItems = items;
+
+  if (!isTocSidebarVisible()) {
+    tocDirty = true;
+    return;
+  }
+  renderToc();
+}
+
+// Delegated single click listener on tocTree
+tocTree.addEventListener('click', (e) => {
+  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.toc-row');
+  if (!row) return;
+  const idx = parseInt(row.dataset.index ?? '-1', 10);
+  const item = currentTocItems[idx];
+  if (item) {
+    jumpToTocItem(item);
+  }
+});
+
 tocCollapse.addEventListener('click', () => {
   tocSidebar.classList.toggle('collapsed');
   tocCollapse.textContent = tocSidebar.classList.contains('collapsed') ? '›' : '‹';
@@ -322,6 +394,105 @@ function writePreview(html: string) {
   }
 }
 
+// ---------------------------------------------------------------- window resize controller
+
+// Wails built-in runtime checks `outerWidth - clientX` and `outerHeight - clientY`,
+// which fails on Windows WebView2 because outer dimensions include invisible OS borders.
+// We implement a dedicated viewport-based edge controller covering all 8 directions
+// and proxy events across the preview iframe.
+const BORDER_THICKNESS = 6;
+type ResizeEdge = 'n-resize' | 'ne-resize' | 'e-resize' | 'se-resize' | 's-resize' | 'sw-resize' | 'w-resize' | 'nw-resize';
+
+let activeResizeEdge: ResizeEdge | null = null;
+
+function computeResizeEdge(clientX: number, clientY: number): ResizeEdge | null {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const l = clientX < BORDER_THICKNESS;
+  const r = w - clientX < BORDER_THICKNESS;
+  const t = clientY < BORDER_THICKNESS;
+  const b = h - clientY < BORDER_THICKNESS;
+
+  if (t && l) return 'nw-resize';
+  if (t && r) return 'ne-resize';
+  if (b && l) return 'sw-resize';
+  if (b && r) return 'se-resize';
+  if (t) return 'n-resize';
+  if (b) return 's-resize';
+  if (l) return 'w-resize';
+  if (r) return 'e-resize';
+  return null;
+}
+
+function setAppCursor(edge: ResizeEdge | null) {
+  activeResizeEdge = edge;
+  const cursorVal = edge || '';
+  document.documentElement.style.cursor = cursorVal;
+  const frameDoc = previewIframe.contentDocument;
+  if (frameDoc) {
+    frameDoc.documentElement.style.cursor = cursorVal;
+    if (frameDoc.body) {
+      frameDoc.body.style.cursor = cursorVal;
+    }
+  }
+}
+
+function triggerNativeResize(edge: ResizeEdge) {
+  try {
+    (window as any).WailsInvoke?.(`resize:${edge}`);
+  } catch (err) {
+    console.error('Resize trigger failed', err);
+  }
+}
+
+function setupResizeController() {
+  if ((window as any).wails?.flags) {
+    (window as any).wails.flags.enableResize = false;
+  }
+
+  window.addEventListener('mousemove', (e) => {
+    const edge = computeResizeEdge(e.clientX, e.clientY);
+    setAppCursor(edge);
+  });
+
+  window.addEventListener('mousedown', (e) => {
+    if (activeResizeEdge && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerNativeResize(activeResizeEdge);
+    }
+  });
+
+  window.addEventListener('mouseleave', () => {
+    setAppCursor(null);
+  });
+}
+
+function hookIframeResizeEvents() {
+  const doc = previewIframe.contentDocument;
+  if (!doc) return;
+
+  doc.addEventListener('mousemove', (e) => {
+    const rect = previewIframe.getBoundingClientRect();
+    const parentX = rect.left + e.clientX;
+    const parentY = rect.top + e.clientY;
+    const edge = computeResizeEdge(parentX, parentY);
+    setAppCursor(edge);
+  });
+
+  doc.addEventListener('mousedown', (e) => {
+    if (activeResizeEdge && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerNativeResize(activeResizeEdge);
+    }
+  });
+
+  doc.addEventListener('mouseleave', () => {
+    setAppCursor(null);
+  });
+}
+
 // ---------------------------------------------------------------- preview links
 
 // Anchor links inside the preview (e.g. a TOC entry pointing to "#section")
@@ -333,6 +504,7 @@ function writePreview(html: string) {
 function hookPreviewLinks() {
   const doc = previewIframe.contentDocument;
   if (!doc) return;
+  hookIframeResizeEvents();
   doc.addEventListener('click', (e) => {
     // No `instanceof Element` here: the event realm is the frame's, not the
     // parent's, so cross-realm checks would fail. Click targets are elements.
@@ -541,6 +713,9 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
     pane.classList.remove('editor-only', 'preview-only');
     if (mode === 'editor') pane.classList.add('editor-only');
     if (mode === 'preview') pane.classList.add('preview-only');
+    if (isTocSidebarVisible() && tocDirty) {
+      renderToc();
+    }
   });
 });
 
@@ -563,6 +738,7 @@ try {
 // ---------------------------------------------------------------- init
 
 async function init() {
+  setupResizeController();
   try {
     const s = await GetSettings();
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
