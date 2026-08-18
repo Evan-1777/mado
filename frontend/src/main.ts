@@ -533,41 +533,33 @@ function writePreview(html: string) {
 
 // Wails built-in runtime checks `outerWidth - clientX` and `outerHeight - clientY`,
 // which fails on Windows WebView2 because outer dimensions include invisible OS borders.
-// We implement a dedicated viewport-based edge controller covering all 8 directions
-// and proxy events across the preview iframe.
-const BORDER_THICKNESS = 6;
+// Furthermore, preview iframes and editor scrollbars consume mouse events on the right
+// and bottom-right edges. We freeze Wails' internal enableResize flag and provide dedicated
+// 8-direction fixed overlay handles with z-index above all views (including iframe & scrollbars).
 type ResizeEdge = 'n-resize' | 'ne-resize' | 'e-resize' | 'se-resize' | 's-resize' | 'sw-resize' | 'w-resize' | 'nw-resize';
 
-let activeResizeEdge: ResizeEdge | null = null;
+const RESIZE_HANDLES: { edge: ResizeEdge; className: string }[] = [
+  { edge: 'n-resize', className: 'resize-top' },
+  { edge: 's-resize', className: 'resize-bottom' },
+  { edge: 'w-resize', className: 'resize-left' },
+  { edge: 'e-resize', className: 'resize-right' },
+  { edge: 'nw-resize', className: 'resize-top-left' },
+  { edge: 'ne-resize', className: 'resize-top-right' },
+  { edge: 'sw-resize', className: 'resize-bottom-left' },
+  { edge: 'se-resize', className: 'resize-bottom-right' },
+];
 
-function computeResizeEdge(clientX: number, clientY: number): ResizeEdge | null {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const l = clientX < BORDER_THICKNESS;
-  const r = w - clientX < BORDER_THICKNESS;
-  const t = clientY < BORDER_THICKNESS;
-  const b = h - clientY < BORDER_THICKNESS;
-
-  if (t && l) return 'nw-resize';
-  if (t && r) return 'ne-resize';
-  if (b && l) return 'sw-resize';
-  if (b && r) return 'se-resize';
-  if (t) return 'n-resize';
-  if (b) return 's-resize';
-  if (l) return 'w-resize';
-  if (r) return 'e-resize';
-  return null;
-}
-
-function setAppCursor(edge: ResizeEdge | null) {
-  activeResizeEdge = edge;
-  const cursorVal = edge || '';
-  document.documentElement.style.cursor = cursorVal;
-  const frameDoc = previewIframe.contentDocument;
-  if (frameDoc) {
-    frameDoc.documentElement.style.cursor = cursorVal;
-    if (frameDoc.body) {
-      frameDoc.body.style.cursor = cursorVal;
+function lockWailsResizeFlags() {
+  const wailsObj = (window as any).wails;
+  if (wailsObj?.flags) {
+    try {
+      Object.defineProperty(wailsObj.flags, 'enableResize', {
+        get: () => false,
+        set: () => {},
+        configurable: false,
+      });
+    } catch {
+      wailsObj.flags.enableResize = false;
     }
   }
 }
@@ -581,51 +573,23 @@ function triggerNativeResize(edge: ResizeEdge) {
 }
 
 function setupResizeController() {
-  if ((window as any).wails?.flags) {
-    (window as any).wails.flags.enableResize = false;
+  lockWailsResizeFlags();
+
+  const frag = document.createDocumentFragment();
+  for (const { edge, className } of RESIZE_HANDLES) {
+    const handle = document.createElement('div');
+    handle.className = `resize-handle ${className}`;
+    handle.dataset.edge = edge;
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerNativeResize(edge);
+      }
+    });
+    frag.appendChild(handle);
   }
-
-  window.addEventListener('mousemove', (e) => {
-    const edge = computeResizeEdge(e.clientX, e.clientY);
-    setAppCursor(edge);
-  });
-
-  window.addEventListener('mousedown', (e) => {
-    if (activeResizeEdge && e.button === 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      triggerNativeResize(activeResizeEdge);
-    }
-  });
-
-  window.addEventListener('mouseleave', () => {
-    setAppCursor(null);
-  });
-}
-
-function hookIframeResizeEvents() {
-  const doc = previewIframe.contentDocument;
-  if (!doc) return;
-
-  doc.addEventListener('mousemove', (e) => {
-    const rect = previewIframe.getBoundingClientRect();
-    const parentX = rect.left + e.clientX;
-    const parentY = rect.top + e.clientY;
-    const edge = computeResizeEdge(parentX, parentY);
-    setAppCursor(edge);
-  });
-
-  doc.addEventListener('mousedown', (e) => {
-    if (activeResizeEdge && e.button === 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      triggerNativeResize(activeResizeEdge);
-    }
-  });
-
-  doc.addEventListener('mouseleave', () => {
-    setAppCursor(null);
-  });
+  app.appendChild(frag);
 }
 
 // ---------------------------------------------------------------- preview links
@@ -639,7 +603,6 @@ function hookIframeResizeEvents() {
 function hookPreviewLinks() {
   const doc = previewIframe.contentDocument;
   if (!doc) return;
-  hookIframeResizeEvents();
   doc.addEventListener('click', (e) => {
     // No `instanceof Element` here: the event realm is the frame's, not the
     // parent's, so cross-realm checks would fail. Click targets are elements.
@@ -824,17 +787,41 @@ function setWinGlyphs(maximised: boolean) {
   close.innerHTML = GLYPH_CLOSE;
 }
 
+async function syncMaximisedState() {
+  try {
+    const isMax = await WindowIsMaximised();
+    app.classList.toggle('maximised', isMax);
+    setWinGlyphs(isMax);
+  } catch {
+    // runtime not ready
+  }
+}
+
 // Caption buttons: unlike the old custom dots, these drive the native window
 // commands. Close routes through requestClose so a dirty editor asks to save
 // first; the actual exit is ForceQuit, which OnBeforeClose lets through.
 titlebar.querySelector('.win-min')!.addEventListener('click', () => { WindowMinimise(); });
 titlebar.querySelector('.win-max')!.addEventListener('click', async () => {
   const wasMax = await WindowIsMaximised();
-  setWinGlyphs(!wasMax);
   if (wasMax) WindowUnmaximise(); else WindowMaximise();
+  setTimeout(syncMaximisedState, 60);
+});
+titlebar.querySelector('.drag-zone')!.addEventListener('dblclick', async () => {
+  const wasMax = await WindowIsMaximised();
+  if (wasMax) WindowUnmaximise(); else WindowMaximise();
+  setTimeout(syncMaximisedState, 60);
 });
 titlebar.querySelector('.win-close')!.addEventListener('click', () => { void requestClose(); });
 setWinGlyphs(false);
+
+let resizeSyncTimer: number | null = null;
+window.addEventListener('resize', () => {
+  if (resizeSyncTimer !== null) window.clearTimeout(resizeSyncTimer);
+  resizeSyncTimer = window.setTimeout(() => {
+    resizeSyncTimer = null;
+    void syncMaximisedState();
+  }, 100);
+});
 
 // ---------------------------------------------------------------- toolbar actions
 
@@ -878,6 +865,7 @@ try {
 
 async function init() {
   setupResizeController();
+  void syncMaximisedState();
   try {
     const s = await GetSettings();
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
@@ -906,3 +894,4 @@ async function init() {
 }
 
 window.addEventListener('DOMContentLoaded', () => { void init(); });
+

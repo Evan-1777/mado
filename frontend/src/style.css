@@ -655,3 +655,90 @@ body {
 :root[data-theme="light"] #close-dialog {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
 }
+
+/* ============ Frameless window resize handles ============ */
+
+.resize-handle {
+  position: fixed;
+  z-index: 100000;
+  pointer-events: auto;
+  user-select: none;
+  --wails-draggable: none;
+  background: transparent;
+}
+
+/* Edge handles (6px border) */
+.resize-handle.resize-top {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: n-resize;
+}
+
+.resize-handle.resize-bottom {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: s-resize;
+}
+
+.resize-handle.resize-left {
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 6px;
+  cursor: w-resize;
+}
+
+.resize-handle.resize-right {
+  top: 10px;
+  bottom: 10px;
+  right: 0;
+  width: 6px;
+  cursor: e-resize;
+}
+
+/* Corner handles (10px x 10px) */
+.resize-handle.resize-top-left {
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  cursor: nw-resize;
+  z-index: 100001;
+}
+
+.resize-handle.resize-top-right {
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  cursor: ne-resize;
+  z-index: 100001;
+}
+
+.resize-handle.resize-bottom-left {
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  cursor: sw-resize;
+  z-index: 100001;
+}
+
+.resize-handle.resize-bottom-right {
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  cursor: se-resize;
+  z-index: 100001;
+}
+
+/* When the window is maximised, disable all resize handles */
+#app.maximised .resize-handle {
+  display: none;
+}
+
