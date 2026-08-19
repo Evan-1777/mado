@@ -656,6 +656,174 @@ body {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
 }
 
+/* ============ Settings dialog ============ */
+
+#settings-dialog {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px 22px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"] #settings-dialog {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+}
+
+#settings-dialog::backdrop {
+  background: rgba(4, 6, 10, 0.55);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-close-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.settings-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+/* Theme segmented control */
+.theme-segmented {
+  display: flex;
+  background: var(--chrome-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  padding: 2px;
+  gap: 2px;
+}
+
+.theme-segmented button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: calc(var(--radius) - 6px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-segmented button:hover {
+  color: var(--text);
+}
+
+.theme-segmented button.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme="light"] .theme-segmented button.active {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Switch toggle */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--chrome-bg);
+  border: 1px solid var(--border);
+  transition: 0.2s;
+  border-radius: 22px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: var(--text-dim);
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+.switch input:checked + .slider {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(18px);
+  background-color: #ffffff;
+}
+
 /* ============ Frameless window resize handles ============ */
 
 .resize-handle {

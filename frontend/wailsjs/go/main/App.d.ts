@@ -26,6 +26,10 @@ export function SaveFile(arg1:string,arg2:string):Promise<void>;
 
 export function SetDirty(arg1:boolean):Promise<void>;
 
+export function SetMath(arg1:boolean):Promise<void>;
+
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SetTitle(arg1:string):Promise<void>;
+
+export function SetWrap(arg1:boolean):Promise<void>;

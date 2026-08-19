@@ -29,7 +29,12 @@ const (
 		"| Inline code | `code` |\n" +
 		"| Keyboard keys | Press <kbd>Ctrl</kbd> + <kbd>S</kbd> |\n" +
 		"| Task list | - [ ] todo / - [x] done |\n" +
-		"| Raw HTML | <div>custom blocks</div> |\n\n" +
+		"| Raw HTML | <div>custom blocks</div> |\n" +
+		"| Inline math | `$E = mc^2$` |\n\n" +
+		"### Math formulas\n\n" +
+		"Block formulas:\n\n" +
+		"$$\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\n" +
+		"Inline formulas like $\\frac{1}{2}$ are also supported.\n\n" +
 		"> Try editing this file — the preview updates live.\n"
 )
 
@@ -46,13 +51,22 @@ func appDataDir() (string, error) {
 	return dir, nil
 }
 
-// settingsPath returns the shared settings JSON path.
-func settingsPath() (string, error) {
-	dir, err := appDataDir()
+// defaultStorePath returns the settings.json path next to the executable.
+func defaultStorePath() (string, error) {
+	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
+	dir := filepath.Dir(exe)
 	return filepath.Join(dir, "settings.json"), nil
+}
+
+// storePath is overridable in tests to isolate test binaries.
+var storePath = defaultStorePath
+
+// settingsPath returns the shared settings JSON path.
+func settingsPath() (string, error) {
+	return storePath()
 }
 
 // ReadFile returns the content of the file at path.
@@ -85,11 +99,11 @@ func GetLastFile() (string, error) {
 		}
 		return "", err
 	}
-	var store map[string]string
+	var store map[string]any
 	if err := json.Unmarshal(data, &store); err != nil {
 		return "", err
 	}
-	if last, ok := store[lastFileKey]; ok && last != "" {
+	if last, ok := store[lastFileKey].(string); ok && last != "" {
 		return last, nil
 	}
 	return persistWelcome()
@@ -118,9 +132,12 @@ func SetLastFile(path string) error {
 	if err != nil {
 		return err
 	}
-	store := map[string]string{}
+	store := map[string]any{}
 	if data, err := os.ReadFile(p); err == nil {
 		_ = json.Unmarshal(data, &store)
+	}
+	if store == nil {
+		store = map[string]any{}
 	}
 	store[lastFileKey] = path
 	data, err := json.MarshalIndent(store, "", "  ")

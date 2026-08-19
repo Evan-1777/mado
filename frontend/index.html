@@ -24,6 +24,52 @@
                 <button type="submit" value="yes" class="primary">是</button>
             </div>
         </form>
+    <!-- Settings dialog -->
+    <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
+        <form method="dialog" class="settings-form">
+            <div class="settings-header">
+                <h2 id="settings-dialog-title">设置</h2>
+                <button type="submit" class="settings-close-btn" aria-label="关闭">✕</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-item">
+                    <div class="settings-label">
+                        <span class="settings-name">主题模式</span>
+                        <span class="settings-desc">切换编辑器与预览界面色彩</span>
+                    </div>
+                    <div class="settings-control">
+                        <div class="theme-segmented">
+                            <button type="button" id="set-theme-dark" class="active">深色</button>
+                            <button type="button" id="set-theme-light">浅色</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-label">
+                        <span class="settings-name">自动换行</span>
+                        <span class="settings-desc">编辑器长文本自动折行显示</span>
+                    </div>
+                    <div class="settings-control">
+                        <label class="switch">
+                            <input type="checkbox" id="set-wrap" checked/>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <div class="settings-label">
+                        <span class="settings-name">公式渲染</span>
+                        <span class="settings-desc">解析 $...$ 与 $$...$$ LaTeX 数学公式</span>
+                    </div>
+                    <div class="settings-control">
+                        <label class="switch">
+                            <input type="checkbox" id="set-math" checked/>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </form>
     </dialog>
     <script src="./app.js"></script>
 </body>

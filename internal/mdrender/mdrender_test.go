@@ -8,7 +8,7 @@ import (
 
 // TestRenderBold verifies **b** produces a <strong> element.
 func TestRenderBold(t *testing.T) {
-	out, err := Render("**b**")
+	out, err := Render("**b**", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestRenderBold(t *testing.T) {
 
 // TestRenderCode verifies `x` produces an inline <code> element.
 func TestRenderCode(t *testing.T) {
-	out, err := Render("`x`")
+	out, err := Render("`x`", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestRenderCode(t *testing.T) {
 // TestRenderTable verifies GFM table syntax produces a <table>.
 func TestRenderTable(t *testing.T) {
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
-	out, err := Render(src)
+	out, err := Render(src, false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestRenderTable(t *testing.T) {
 
 // TestRenderTaskList verifies GFM task list items render checkboxes.
 func TestRenderTaskList(t *testing.T) {
-	out, err := Render("- [x] done\n- [ ] todo")
+	out, err := Render("- [x] done\n- [ ] todo", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestRenderTaskList(t *testing.T) {
 // (kbd) is preserved.
 func TestStripScripts(t *testing.T) {
 	src := "<script>alert(1)</script><kbd>Ctrl</kbd>"
-	out, err := Render(src)
+	out, err := Render(src, false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestStripScripts(t *testing.T) {
 
 // TestRenderCodeFence verifies fenced code blocks get highlighted with classes.
 func TestRenderCodeFence(t *testing.T) {
-	out, err := Render("```go\nfunc main() {}\n```")
+	out, err := Render("```go\nfunc main() {}\n```", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -79,12 +79,8 @@ func TestRenderCodeFence(t *testing.T) {
 }
 
 // TestRenderHeadingIDs verifies heading ids match the hand-written TOC slugs
-// from real-world Chinese documents (the regression behind the dead TOC
-// links): full-width punctuation is dropped, whitespace becomes '-', CJK
-// text is preserved, and ASCII letters are lowercased.
+// from real-world Chinese documents.
 func TestRenderHeadingIDs(t *testing.T) {
-	// The 7 headings from the reported document, with the exact hrefs its
-	// TOC links point at. Each rendered id must equal the href fragment.
 	cases := []struct{ heading, wantID string }{
 		{"## 一、先搞清楚 WSL 是什么", "一先搞清楚-wsl-是什么"},
 		{"## 二、环境搭建与安装", "二环境搭建与安装"},
@@ -98,7 +94,7 @@ func TestRenderHeadingIDs(t *testing.T) {
 	for _, c := range cases {
 		src += c.heading + "\n\n"
 	}
-	out, err := Render(src)
+	out, err := Render(src, false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -114,12 +110,10 @@ func TestRenderHeadingIDs(t *testing.T) {
 }
 
 // TestRenderUnicodeTOCLinkTarget covers the complete renderer boundary behind
-// preview TOC clicks: goldmark URL-encodes a Unicode href fragment, while the
-// target heading id remains Unicode in the DOM. The preview click handler must
-// decode the former before looking up the latter.
+// preview TOC clicks.
 func TestRenderUnicodeTOCLinkTarget(t *testing.T) {
 	const id = "一先搞清楚-wsl-是什么"
-	out, err := Render("[一、先搞清楚 WSL 是什么](#" + id + ")\n\n## 一、先搞清楚 WSL 是什么\n")
+	out, err := Render("[一、先搞清楚 WSL 是什么](#"+id+")\n\n## 一、先搞清楚 WSL 是什么\n", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -142,12 +136,129 @@ func TestRenderUnicodeTOCLinkTarget(t *testing.T) {
 
 // TestRenderDuplicateHeadingIDs verifies repeated headings get -N suffixes.
 func TestRenderDuplicateHeadingIDs(t *testing.T) {
-	out, err := Render("## Foo\n\n## Foo\n")
+	out, err := Render("## Foo\n\n## Foo\n", false)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	if !contains(out, `id="foo"`) || !contains(out, `id="foo-1"`) {
 		t.Fatalf("duplicate headings: expected id=\"foo\" and id=\"foo-1\", got %q", out)
+	}
+}
+
+// --- Math Extension Tests ---
+
+// 1. $E=mc^2$ -> output contains class="math-inline" and data-tex="E=mc^2"
+func TestRenderMathInline(t *testing.T) {
+	out, err := Render("$E=mc^2$", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if want := `<span class="math-inline" data-tex="E=mc^2">E=mc^2</span>`; !contains(out, want) {
+		t.Fatalf("math inline: output %q missing %q", out, want)
+	}
+}
+
+// 2. $$\frac{a}{b}$$ block -> output contains class="math-block"
+func TestRenderMathBlock(t *testing.T) {
+	out, err := Render("$$\\frac{a}{b}$$", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if want := `<div class="math-block" data-tex="\frac{a}{b}">\frac{a}{b}</div>`; !contains(out, want) {
+		t.Fatalf("math block singleline: output %q missing %q", out, want)
+	}
+
+	multiline := "$$\n\\frac{a}{b}\n$$"
+	outMulti, err := Render(multiline, true)
+	if err != nil {
+		t.Fatalf("render multi: %v", err)
+	}
+	if want := `<div class="math-block" data-tex="\frac{a}{b}">\frac{a}{b}</div>`; !contains(outMulti, want) {
+		t.Fatalf("math block multiline: output %q missing %q", outMulti, want)
+	}
+}
+
+// 3. TeX contains <, >, &, " -> data-tex is HTML escaped
+func TestRenderMathEscaping(t *testing.T) {
+	out, err := Render(`$a < b & c > d "$`, true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want := `data-tex="a &lt; b &amp; c &gt; d &#34;"`
+	if !contains(out, want) {
+		t.Fatalf("math escaping: output %q missing %q", out, want)
+	}
+}
+
+// 4. $5 and $10 -> output literal text, no math-inline
+func TestRenderMathCurrencyProtection(t *testing.T) {
+	out, err := Render("I have $5 and $10 in cash.", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(out, "math-inline") {
+		t.Fatalf("currency erroneously parsed as math: %q", out)
+	}
+	if !contains(out, "$5 and $10") {
+		t.Fatalf("currency text altered: %q", out)
+	}
+}
+
+// 5. \$5 -> output contains $ literal, no math-inline
+func TestRenderMathEscapedDollar(t *testing.T) {
+	out, err := Render(`\$5`, true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(out, "math-inline") {
+		t.Fatalf("escaped dollar parsed as math: %q", out)
+	}
+	if !contains(out, "$5") {
+		t.Fatalf("escaped dollar output missing $5: %q", out)
+	}
+}
+
+// 6. Fenced code block $x$ and inline code `$x$` -> no math placeholder
+func TestRenderMathInCode(t *testing.T) {
+	outInlineCode, err := Render("`$x$`", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(outInlineCode, "math-inline") || !contains(outInlineCode, "<code>$x$</code>") {
+		t.Fatalf("math inside inline code: %q", outInlineCode)
+	}
+
+	outFencedCode, err := Render("```\n$x$\n```", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(outFencedCode, "math-inline") || contains(outFencedCode, "math-block") {
+		t.Fatalf("math inside code fence: %q", outFencedCode)
+	}
+}
+
+// 7. math=false -> $...$/$$...$$ output as normal text
+func TestRenderMathDisabled(t *testing.T) {
+	out, err := Render("$E=mc^2$ and $$\\frac{1}{2}$$", false)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(out, "math-inline") || contains(out, "math-block") {
+		t.Fatalf("math rendered while disabled: %q", out)
+	}
+}
+
+// 8. Unclosed $ -> literal output
+func TestRenderMathUnclosed(t *testing.T) {
+	out, err := Render("$E=mc^2", true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(out, "math-inline") {
+		t.Fatalf("unclosed dollar rendered as math: %q", out)
+	}
+	if !contains(out, "$E=mc^2") {
+		t.Fatalf("unclosed dollar text lost: %q", out)
 	}
 }
 

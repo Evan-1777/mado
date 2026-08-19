@@ -31,14 +31,38 @@ func NewApp() *App {
 	return &App{}
 }
 
-// startup saves the context and loads persisted settings. It runs before the
-// window is shown.
+// migrateLegacyStore copies settings from src to dst if dst does not exist yet.
+func migrateLegacyStore(src, dst string) error {
+	if _, err := os.Stat(dst); err == nil {
+		return nil // dst already exists: do not overwrite
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil // src doesn't exist: nothing to migrate
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o644)
+}
+
+// startup saves the context, migrates legacy settings if needed, and loads persisted
+// settings. It runs before the window is shown.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if dst, err := settings.Path(); err == nil {
+		if configDir, err := os.UserConfigDir(); err == nil {
+			src := filepath.Join(configDir, "Mado", "settings.json")
+			_ = migrateLegacyStore(src, dst)
+		}
+	}
 	s, err := settings.Load()
 	if err != nil {
 		// Best effort: fall back to defaults.
-		s = settings.Settings{Theme: settings.DefaultTheme}
+		s = settings.Default()
 	}
 	a.settings = s
 }
@@ -70,7 +94,7 @@ func (a *App) SaveFile(path, content string) error {
 
 // Render converts Markdown source to safe HTML for the preview pane.
 func (a *App) Render(md string) (string, error) {
-	return mdrender.Render(md)
+	return mdrender.Render(md, a.settings.Math)
 }
 
 // GetWelcome returns the last-opened file path, creating the welcome document
@@ -103,6 +127,18 @@ func (a *App) SetTheme(themeName string) error {
 		runtime.WindowSetLightTheme(a.ctx)
 	}
 	return nil
+}
+
+// SetWrap persists the editor word-wrap preference.
+func (a *App) SetWrap(wrap bool) error {
+	a.settings.Wrap = wrap
+	return settings.Save(a.settings)
+}
+
+// SetMath persists the LaTeX math rendering preference.
+func (a *App) SetMath(math bool) error {
+	a.settings.Math = math
+	return settings.Save(a.settings)
 }
 
 // SetTitle updates the window title and the custom title bar text.

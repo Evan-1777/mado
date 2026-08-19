@@ -50,10 +50,18 @@ export function SetDirty(arg1) {
   return window['go']['main']['App']['SetDirty'](arg1);
 }
 
+export function SetMath(arg1) {
+  return window['go']['main']['App']['SetMath'](arg1);
+}
+
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
 
 export function SetTitle(arg1) {
   return window['go']['main']['App']['SetTitle'](arg1);
+}
+
+export function SetWrap(arg1) {
+  return window['go']['main']['App']['SetWrap'](arg1);
 }

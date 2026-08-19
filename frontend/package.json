@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"require('fs').copyFileSync('index.html','dist/index.html')\"",
-    "dev": "esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch"
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs');fs.copyFileSync('index.html','dist/index.html');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\"",
+    "dev": "node -e \"const fs=require('fs');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\" && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",
@@ -14,7 +14,8 @@
     "@codemirror/state": "^6.5.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.1",
-    "@lezer/highlight": "^1.2.1"
+    "@lezer/highlight": "^1.2.1",
+    "katex": "^0.16.47"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

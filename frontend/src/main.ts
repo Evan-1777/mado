@@ -1,4 +1,5 @@
 import './style.css';
+import katex from 'katex';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -8,7 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
   LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty,
-  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog,
+  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -23,6 +24,8 @@ function baseName(p: string): string {
 
 interface Settings {
   Theme: string;
+  Wrap: boolean;
+  Math: boolean;
 }
 
 let currentTheme: 'dark' | 'light' = 'dark';
@@ -65,6 +68,11 @@ const GLYPH_THEME = `<svg width="15" height="15" viewBox="0 0 16 16" fill="curre
   <path d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 1.25v11A5.5 5.5 0 0 1 8 2.5z"/>
 </svg>`;
 
+const GLYPH_SETTINGS = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="8" cy="8" r="2.5"/>
+  <path d="M13.8 6.5l-.9-.5a5.7 5.7 0 0 0-.5-1.2l.4-1a.8.8 0 0 0-.2-.9l-1-1a.8.8 0 0 0-.9-.2l-1 .4a5.7 5.7 0 0 0-1.2-.5l-.5-.9a.8.8 0 0 0-.8-.5h-1.4a.8.8 0 0 0-.8.5l-.5.9a5.7 5.7 0 0 0-1.2.5l-1-.4a.8.8 0 0 0-.9.2l-1 1a.8.8 0 0 0-.2.9l.4 1a5.7 5.7 0 0 0-.5 1.2l-.9.5a.8.8 0 0 0-.5.8v1.4a.8.8 0 0 0 .5.8l.9.5a5.7 5.7 0 0 0 .5 1.2l-.4 1a.8.8 0 0 0 .2.9l1 1a.8.8 0 0 0 .9.2l1-.4a5.7 5.7 0 0 0 1.2.5l.5.9a.8.8 0 0 0 .8.5h1.4a.8.8 0 0 0 .8-.5l.5-.9a5.7 5.7 0 0 0 1.2-.5l1 .4a.8.8 0 0 0 .9-.2l1-1a.8.8 0 0 0 .2-.9l-.4-1a5.7 5.7 0 0 0 .5-1.2l.9-.5a.8.8 0 0 0 .5-.8V7.3a.8.8 0 0 0-.5-.8z"/>
+</svg>`;
+
 const GLYPH_CHEVRON_DOWN = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <path d="M4 6l4 4 4-4"/>
 </svg>`;
@@ -82,6 +90,7 @@ titlebar.innerHTML = `
     <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
     <button class="icon-btn" id="btn-new" title="新建文件 (Ctrl+N)" aria-label="新建文件">${GLYPH_NEW}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
+    <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
     <button class="win-btn win-min" title="Minimise" aria-label="Minimise"></button>
@@ -380,17 +389,37 @@ tocToggleAll.addEventListener('click', () => {
   renderToc();
 });
 
-// ---------------------------------------------------------------- theme
+// ---------------------------------------------------------------- settings & theme
+
+const settingsDialog = document.getElementById('settings-dialog') as HTMLDialogElement | null;
+const setThemeDarkBtn = document.getElementById('set-theme-dark') as HTMLButtonElement | null;
+const setThemeLightBtn = document.getElementById('set-theme-light') as HTMLButtonElement | null;
+const setWrapInput = document.getElementById('set-wrap') as HTMLInputElement | null;
+const setMathInput = document.getElementById('set-math') as HTMLInputElement | null;
+
+function syncSettingsModalUI() {
+  if (setThemeDarkBtn && setThemeLightBtn) {
+    setThemeDarkBtn.classList.toggle('active', currentTheme === 'dark');
+    setThemeLightBtn.classList.toggle('active', currentTheme === 'light');
+  }
+}
 
 function applyTheme(theme: 'dark' | 'light') {
   currentTheme = theme;
   document.documentElement.dataset.theme = theme;
+  syncSettingsModalUI();
   // CodeMirror theme: swap compartments
   if (cm) {
     cm.dispatch({ effects: themeCompartment.reconfigure(theme === 'dark' ? [oneDark] : [lightSyntax]) });
   }
   previewCss = ''; // invalidate cached stylesheet so preview follows theme
   void refreshPreview();
+}
+
+function applyWrap(on: boolean) {
+  if (cm) {
+    cm.dispatch({ effects: wrapCompartment.reconfigure(on ? [EditorView.lineWrapping] : []) });
+  }
 }
 
 // Light syntax highlighting for CodeMirror (dark default is oneDark).
@@ -416,6 +445,7 @@ async function toggleTheme() {
 // ---------------------------------------------------------------- CodeMirror
 
 const themeCompartment = new Compartment();
+const wrapCompartment = new Compartment();
 
 const editorState = EditorState.create({
   doc: '',
@@ -433,6 +463,7 @@ const editorState = EditorState.create({
     markdown(),
     history(),
     themeCompartment.of([oneDark]),
+    wrapCompartment.of([EditorView.lineWrapping]),
     keymap.of([
       ...defaultKeymap,
       ...historyKeymap,
@@ -493,6 +524,29 @@ async function cssForTheme(): Promise<string> {
   return css;
 }
 
+const mathCache = new Map<string, string>();
+
+function renderMathInFrame(frameDoc: Document | null | undefined) {
+  if (!frameDoc) return;
+  const elements = frameDoc.querySelectorAll<HTMLElement>('.math-inline, .math-block');
+  elements.forEach((el) => {
+    const tex = el.getAttribute('data-tex') ?? el.textContent ?? '';
+    const displayMode = el.classList.contains('math-block');
+    const key = `${displayMode ? 'B' : 'I'}:${tex}`;
+    let rendered = mathCache.get(key);
+    if (rendered === undefined) {
+      try {
+        rendered = katex.renderToString(tex, { displayMode, throwOnError: false });
+      } catch (err) {
+        console.error('KaTeX render error:', err);
+        rendered = el.innerHTML;
+      }
+      mathCache.set(key, rendered);
+    }
+    el.innerHTML = rendered;
+  });
+}
+
 // Preview updates happen in place inside the iframe (swap the <style> text
 // and the <article> innerHTML) so the document is never reloaded. Replacing
 // srcdoc would re-navigate the iframe: the preview would flash white and its
@@ -503,6 +557,7 @@ function writePreview(html: string) {
 <html>
 <head>
 <meta charset="utf-8"/>
+<link rel="stylesheet" href="./katex/katex.min.css"/>
 <style>${previewCss}</style>
 </head>
 <body>
@@ -523,6 +578,7 @@ function writePreview(html: string) {
   try {
     style.textContent = previewCss;   // CSS first: no stale-style flash
     content.innerHTML = html;
+    renderMathInFrame(frameDoc);
   } catch {
     // Cross-origin / unexpected frame state: fall back to a full rebuild.
     previewIframe.srcdoc = doc();
@@ -629,7 +685,10 @@ function hookPreviewLinks() {
 // The listener lives on the frame's document, so it must be re-attached every
 // time that document is rebuilt (srcdoc bootstrap or fallback rebuild). In-
 // place updates never replace the document, so it survives edits.
-previewIframe.addEventListener('load', hookPreviewLinks);
+previewIframe.addEventListener('load', () => {
+  hookPreviewLinks();
+  renderMathInFrame(previewIframe.contentDocument);
+});
 
 // ---------------------------------------------------------------- file ops
 
@@ -823,12 +882,68 @@ window.addEventListener('resize', () => {
   }, 100);
 });
 
-// ---------------------------------------------------------------- toolbar actions
+// ---------------------------------------------------------------- toolbar & settings actions
 
 document.getElementById('btn-open')!.addEventListener('click', () => { void openFile(); });
 document.getElementById('btn-save')!.addEventListener('click', () => { void saveCurrent(); });
 document.getElementById('btn-new')!.addEventListener('click', () => { void newFile(); });
 document.getElementById('btn-theme')!.addEventListener('click', () => { void toggleTheme(); });
+
+document.getElementById('btn-settings')?.addEventListener('click', () => {
+  syncSettingsModalUI();
+  settingsDialog?.showModal();
+});
+
+settingsDialog?.addEventListener('click', (e) => {
+  const rect = settingsDialog.getBoundingClientRect();
+  const isInDialog = (
+    rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+    rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+  );
+  if (!isInDialog) {
+    settingsDialog.close();
+  }
+});
+
+setThemeDarkBtn?.addEventListener('click', async () => {
+  if (currentTheme === 'dark') return;
+  try {
+    await SetTheme('dark');
+    applyTheme('dark');
+  } catch (err) {
+    console.error('SetTheme failed', err);
+  }
+});
+
+setThemeLightBtn?.addEventListener('click', async () => {
+  if (currentTheme === 'light') return;
+  try {
+    await SetTheme('light');
+    applyTheme('light');
+  } catch (err) {
+    console.error('SetTheme failed', err);
+  }
+});
+
+setWrapInput?.addEventListener('change', async () => {
+  const on = setWrapInput.checked;
+  try {
+    await SetWrap(on);
+    applyWrap(on);
+  } catch (err) {
+    console.error('SetWrap failed', err);
+  }
+});
+
+setMathInput?.addEventListener('change', async () => {
+  const on = setMathInput.checked;
+  try {
+    await SetMath(on);
+    void refreshPreview();
+  } catch (err) {
+    console.error('SetMath failed', err);
+  }
+});
 
 // Mode tabs
 toolbar.querySelectorAll('.seg button').forEach((btn) => {
@@ -869,9 +984,13 @@ async function init() {
   try {
     const s = await GetSettings();
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
+    applyWrap(s.Wrap !== false);
+    if (setWrapInput) setWrapInput.checked = (s.Wrap !== false);
+    if (setMathInput) setMathInput.checked = (s.Math !== false);
   } catch (err) {
     console.error('init: settings failed', err);
     applyTheme('dark');
+    applyWrap(true);
   }
   try {
     // Windows file-association launch ("Open with") passes the document on

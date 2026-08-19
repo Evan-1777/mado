@@ -26,18 +26,23 @@ import (
 var scriptRe = regexp.MustCompile(`(?is)<\s*/?\s*script\b[^>]*>`)
 
 // Render converts Markdown source to sanitized HTML.
-func Render(md string) (string, error) {
-	engine := goldmark.New(
-		goldmark.WithExtensions(
-			extension.GFM,
-			extension.Typographer,
-			highlighting.NewHighlighting(
-				highlighting.WithStyle("github"),
-				highlighting.WithFormatOptions(
-					chromahtml.WithClasses(true),
-				),
+func Render(md string, math bool) (string, error) {
+	exts := []goldmark.Extender{
+		extension.GFM,
+		extension.Typographer,
+		highlighting.NewHighlighting(
+			highlighting.WithStyle("github"),
+			highlighting.WithFormatOptions(
+				chromahtml.WithClasses(true),
 			),
 		),
+	}
+	if math {
+		exts = append(exts, MathExtension)
+	}
+
+	engine := goldmark.New(
+		goldmark.WithExtensions(exts...),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 		),

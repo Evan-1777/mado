@@ -24,13 +24,13 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.4：Editor/Preview 聚焦模式多层目录侧栏完成，待 Windows 交互验收）
-- **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
+- **当前阶段**：开发中（v1.5：公式渲染、设置页与偏好持久化便携化完成，待 Windows 交互验收）
+- **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
 
 - **运行平台**：Windows 10/11（目标平台，依赖系统 Edge WebView2 Runtime）；**开发环境**：Linux x86_64（2026-08-15 迁移）
-  - ★ 易错：路径含中文/空格须加引号；`%APPDATA%/Mado/` 为 Windows 状态目录，Linux 下 `os.UserConfigDir()` 解析到 `$XDG_CONFIG_HOME`/`~/.config`
+  - ★ 易错：路径含中文/空格须加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅保留欢迎文档 `welcome.md`
 - **Shell**：bash
 - **版本管理**：git 仓库（main 分支，无分支策略）
 - **语言 / 运行时**：Go 1.25.3（用户级安装于 `~/.local/go`，单版本，会话内 `export PATH=$HOME/.local/go/bin:$PATH`）；Node.js 24 + npm 11（前端构建）
@@ -41,23 +41,24 @@
   - **本机验证链**（最小占用，产物均 gitignored）：
     1. `cd frontend && npm install --include=dev`（★ 本环境 `NODE_ENV=production` 且 `omit=dev`，不加 `--include=dev` 会跳过 esbuild）
     2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`（stdout 丢弃；★ 必须带 `--loader:.css=empty`，否则 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`）
-    3. `npm run build` 产出 `dist/`（go:embed 依赖，约 544K）
+    3. `npm run build` 产出 `dist/`（go:embed 依赖，含 KaTeX 资源，约 1.3MB）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实配置目录：隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
 
 ## 3. 目录结构与模块职责
 
 ```
 go.mod / go.sum          # Go 依赖（goldmark、wails v2、chroma 等）
 main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、拖放）
-app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme 等
+main_test.go             # 根包测试：旧存储迁移测试
+app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme/SetWrap/SetMath 等
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
-internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共享 %APPDATA%/Mado/settings.json）
-internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + script 剥离 + Chroma 高亮
-internal/settings/       # 主题等用户偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
+internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共享 exe 目录下 settings.json）
+internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）
+internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html）
+frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（~15.6MB）
@@ -68,11 +69,13 @@ docs/                    # 用户文档
 
 - **核心模块**：
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
-  - `mdrender.Render(md) → safe HTML`（script 已剥离）
+  - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
   - `theme.ThemeCSS(t) → 组合预览 CSS`（tokens + base + theme 特化）
 - **数据流**：
-  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
-  - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
+  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；`startup` 自动检查旧配置目录执行一次性迁移
+  - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
+  - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
+  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
@@ -82,7 +85,7 @@ docs/                    # 用户文档
   - `internal/*` 禁止互相依赖（filesys/settings 仅通过共享 JSON 文件松耦合，禁止 import 对方）
   - `main.go`/`app.go` 是唯一允许 import internal 的包
   - 前端 import `frontend/wailsjs/` 生成的绑定，禁直接调用原生 API
-  - ★ 易错：mdrender/theme/filesys 是纯 Go，测试不依赖 GUI，可在无头环境跑
+  - ★ 易错：mdrender/theme/filesys/settings 是纯 Go，测试不依赖 GUI，可在无头环境跑
 
 ## 5. 关键约定
 
@@ -110,6 +113,10 @@ docs/                    # 用户文档
 - 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
 - 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，大量标题不识别——已修复为 `split('\n')`（2026-08-18）；同次修复遗漏正则内 `\\s` 转义错误，导致 fenced code block 检测与 ATX 标题匹配失败（`/^\\\\s*(```|~~~)/` 与 `/^(\\\\s{0,3})(#{1,6})\\\\s+/` 中 `\\\\s` 匹配字面量反斜杠+s 而非空白字符类），代码块内 `#` 被误识别为标题、真实标题不被识别——已补充修复为 `\\s`（2025-06-01）」
 - 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
+- 「偏好持久化便携化：共享 settings.json 迁移至 exe 所在目录——原因：便携化需求；启动时若 exe 目录无 settings.json 则单次从旧 APPDATA 位置迁移；若 exe 部署于受写保护目录则持久化不可写为已知限制」
+- 「KaTeX 静态资源经 Wails 资产服务相对路径加载——原因：srcdoc 帧内以 `<link rel="stylesheet" href="./katex/katex.min.css"/>` 引入样式与字体，继承父文档 baseURL」
+- 「`$` 行内公式首尾空格启发式与货币误判防护——原因：`$5 and $10` 首尾含空格或未闭合不构成公式，直接退化为字面文本」
+- 「行内公式不支持跨行——原因：语法边界清晰、避免未闭合 `$` 跨段污染渲染」
 
 ## 7. 外部依赖与集成
 
@@ -118,6 +125,9 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-19 公式渲染采用 Go 解析定界符输出占位元素 + 父上下文 KaTeX 渲染回填帧 DOM——理由：维持 iframe sandbox 安全模型（无 allow-scripts），同时获得 KaTeX 纯客户端高性能渲染
+- 2026-08-19 KaTeX 静态资源随构建产物分发（`dist/katex/`）——理由：离线可用、无外部 CDN 依赖
+- 2026-08-19 偏好设置与最近文件记录整体迁移至 exe 目录——理由：便携化，启动单次静默迁移旧配置
 - 2026-08-18 窗口全向缩放深度重构为顶层 Fixed Overlay 8 方向把手与 Wails 运行时锁定——理由：彻底消除 iframe 与编辑器原生滚动条对右侧与右下角鼠标事件的阻断，保证所有模式下 8 方向边缘/边角原生缩放 100% 触发，同时在最大化时隐藏把手保证右上角关闭热区正常
 - 2026-08-18 目录大纲恢复折叠功能并优化默认状态（默认全部展开、顶部全展/全收切换、侧栏默认 40px 收起）——理由：在保持无缩进 Flat 结构排版优势的同时恢复长文档章节折叠能力，默认收起侧栏减少初次加载视觉干扰，顶部一键切换提供全局折叠便利
 - 2026-08-18 标题栏动作按钮采用内联 SVG 矢量图标并移除文字标签——理由：与 Win11 系统标题栏视觉统一，Open（文件夹）与 Save（磁盘）图标符合真实功能，纯图标按钮节省水平空间
@@ -143,3 +153,4 @@ docs/                    # 用户文档
 - **lastfile** = 上次打开的文件路径，持久化于共享 settings.json 的 `lastfile` 字段
 - **欢迎文档** = 首次启动时自动写入 `%APPDATA%/Mado/welcome.md` 的默认演示文档
 - **预览通道** = 编辑区 → mdrender → iframe 内原地更新（style + article，首帧 srcdoc 引导）+ 父侧链接拦截（锚点滚动/导航阻断）的渲染链路
+- **公式通道** = Go 侧 math 扩展解析定界符输出带 `data-tex` 占位元素 → 前端父上下文 KaTeX `renderToString` 渲染 → 写入预览帧 DOM 的渲染管线
