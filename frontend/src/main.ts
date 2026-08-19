@@ -68,9 +68,9 @@ const GLYPH_THEME = `<svg width="15" height="15" viewBox="0 0 16 16" fill="curre
   <path d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 1.25v11A5.5 5.5 0 0 1 8 2.5z"/>
 </svg>`;
 
-const GLYPH_SETTINGS = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="8" cy="8" r="2.5"/>
-  <path d="M13.8 6.5l-.9-.5a5.7 5.7 0 0 0-.5-1.2l.4-1a.8.8 0 0 0-.2-.9l-1-1a.8.8 0 0 0-.9-.2l-1 .4a5.7 5.7 0 0 0-1.2-.5l-.5-.9a.8.8 0 0 0-.8-.5h-1.4a.8.8 0 0 0-.8.5l-.5.9a5.7 5.7 0 0 0-1.2.5l-1-.4a.8.8 0 0 0-.9.2l-1 1a.8.8 0 0 0-.2.9l.4 1a5.7 5.7 0 0 0-.5 1.2l-.9.5a.8.8 0 0 0-.5.8v1.4a.8.8 0 0 0 .5.8l.9.5a5.7 5.7 0 0 0 .5 1.2l-.4 1a.8.8 0 0 0 .2.9l1 1a.8.8 0 0 0 .9.2l1-.4a5.7 5.7 0 0 0 1.2.5l.5.9a.8.8 0 0 0 .8.5h1.4a.8.8 0 0 0 .8-.5l.5-.9a5.7 5.7 0 0 0 1.2-.5l1 .4a.8.8 0 0 0 .9-.2l1-1a.8.8 0 0 0 .2-.9l-.4-1a5.7 5.7 0 0 0 .5-1.2l.9-.5a.8.8 0 0 0 .5-.8V7.3a.8.8 0 0 0-.5-.8z"/>
+const GLYPH_SETTINGS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
 </svg>`;
 
 const GLYPH_CHEVRON_DOWN = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -86,7 +86,7 @@ titlebar.className = 'titlebar';
 titlebar.innerHTML = `
   <div class="drag-zone"><span class="title" id="title">Mado</span></div>
   <div class="titlebar-actions">
-    <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件"><span class="glyph">${GLYPH_OPEN}</span></button>
+    <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件">${GLYPH_OPEN}</button>
     <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
     <button class="icon-btn" id="btn-new" title="新建文件 (Ctrl+N)" aria-label="新建文件">${GLYPH_NEW}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>

@@ -262,6 +262,51 @@ func TestRenderMathUnclosed(t *testing.T) {
 	}
 }
 
+// 9. Single-line $$ with trailing spaces followed by markdown headers and dividers (image.png scenario)
+func TestRenderMathSingleLineTrailingSpacesAndMarkdownStructure(t *testing.T) {
+	src := "$$ \\text{货币总量} = \\frac{100 \\text{ 万元}}{10\\%} = 1000 \\quad \\text{万元} $$   \n\n" +
+		"整个过程除了最开始的基础货币之外，更多就是**记账**。\n\n" +
+		"---\n\n" +
+		"## 第二部分：核心概念——“土地金融”\n"
+
+	out, err := Render(src, true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	wantBlock := `<div class="math-block" data-tex="\text{货币总量} = \frac{100 \text{ 万元}}{10\%} = 1000 \quad \text{万元}">`
+	if !contains(out, wantBlock) {
+		t.Errorf("math block missing %q in %q", wantBlock, out)
+	}
+
+	wantParagraph := "<p>整个过程除了最开始的基础货币之外，更多就是<strong>记账</strong>。</p>"
+	if !contains(out, wantParagraph) {
+		t.Errorf("paragraph missing %q in %q", wantParagraph, out)
+	}
+
+	if !contains(out, "<hr>") {
+		t.Errorf("hr divider missing in %q", out)
+	}
+
+	wantHeading := `<h2 id="第二部分核心概念土地金融">第二部分：核心概念——“土地金融”</h2>`
+	if !contains(out, wantHeading) {
+		t.Errorf("heading missing %q in %q", wantHeading, out)
+	}
+}
+
+// 10. Inline $$...$$ in paragraph
+func TestRenderMathInlineDoubleDollar(t *testing.T) {
+	src := "Formula $$E = mc^2$$ inside paragraph."
+	out, err := Render(src, true)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want := `<span class="math-inline" data-tex="E = mc^2">E = mc^2</span>`
+	if !contains(out, want) {
+		t.Fatalf("inline double dollar missing %q in %q", want, out)
+	}
+}
+
 func contains(haystack, needle string) bool {
 	for i := 0; i+len(needle) <= len(haystack); i++ {
 		if haystack[i:i+len(needle)] == needle {

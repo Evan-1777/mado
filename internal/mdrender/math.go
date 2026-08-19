@@ -77,13 +77,15 @@ func (s *mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.C
 	if len(line) == 0 || line[0] != '$' {
 		return nil
 	}
-	if len(line) > 1 && line[1] == '$' {
-		return nil
+	isDouble := len(line) > 1 && line[1] == '$'
+	delimLen := 1
+	if isDouble {
+		delimLen = 2
 	}
 
-	// Search for closing $ on the same line
+	// Search for closing $ or $$ on the same line
 	var closedAt = -1
-	for i := 1; i < len(line); i++ {
+	for i := delimLen; i < len(line); i++ {
 		c := line[i]
 		if c == '\n' || c == '\r' {
 			break
@@ -92,9 +94,16 @@ func (s *mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.C
 			i++
 			continue
 		}
-		if c == '$' {
-			closedAt = i
-			break
+		if isDouble {
+			if c == '$' && i+1 < len(line) && line[i+1] == '$' {
+				closedAt = i
+				break
+			}
+		} else {
+			if c == '$' {
+				closedAt = i
+				break
+			}
 		}
 	}
 
@@ -102,19 +111,27 @@ func (s *mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.C
 		return nil
 	}
 
-	content := line[1:closedAt]
+	content := line[delimLen:closedAt]
 	if len(content) == 0 {
 		return nil
 	}
-	// Currency / spacing heuristic: no leading or trailing spaces allowed
-	if content[0] == ' ' || content[0] == '\t' {
-		return nil
-	}
-	if content[len(content)-1] == ' ' || content[len(content)-1] == '\t' {
-		return nil
+	// Currency / spacing heuristic: no leading or trailing spaces allowed for single $,
+	// for $$ allow whitespace trimmed
+	if !isDouble {
+		if content[0] == ' ' || content[0] == '\t' {
+			return nil
+		}
+		if content[len(content)-1] == ' ' || content[len(content)-1] == '\t' {
+			return nil
+		}
+	} else {
+		content = bytes.TrimSpace(content)
+		if len(content) == 0 {
+			return nil
+		}
 	}
 
-	block.Advance(closedAt + 1)
+	block.Advance(closedAt + delimLen)
 	return NewMathInline(content)
 }
 
@@ -123,6 +140,12 @@ func (s *mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.C
 type mathBlockParser struct{}
 
 var defaultMathBlockParser = &mathBlockParser{}
+
+type mathBlockData struct {
+	closed bool
+}
+
+var mathBlockInfoKey = parser.NewContextKey()
 
 func (b *mathBlockParser) Trigger() []byte {
 	return nil
@@ -151,38 +174,50 @@ func (b *mathBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 	}
 
 	node := NewMathBlock()
-	afterOpener := bytes.TrimRight(rest[2:], "\r\n")
+	trimmedRight := bytes.TrimRight(rest[2:], " \t\r\n")
 
-	// Single-line block: `$$\frac{a}{b}$$`
-	if len(afterOpener) >= 2 && bytes.HasSuffix(afterOpener, []byte("$$")) {
-		content := afterOpener[:len(afterOpener)-2]
+	// Single-line block: `$$\frac{a}{b}$$` (with optional leading/trailing spaces)
+	if len(trimmedRight) >= 2 && bytes.HasSuffix(trimmedRight, []byte("$$")) {
+		content := trimmedRight[:len(trimmedRight)-2]
 		node.Content = bytes.TrimSpace(content)
 		reader.AdvanceToEOL()
-		return node, parser.Close
+		pc.Set(mathBlockInfoKey, &mathBlockData{closed: true})
+		return node, parser.NoChildren
 	}
 
-	trimmedAfter := bytes.TrimSpace(afterOpener)
+	trimmedAfter := bytes.TrimSpace(rest[2:])
 	if len(trimmedAfter) > 0 {
 		node.Content = append(node.Content, trimmedAfter...)
 	}
 	reader.AdvanceToEOL()
+	pc.Set(mathBlockInfoKey, &mathBlockData{closed: false})
 	return node, parser.NoChildren
 }
 
 func (b *mathBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	data, _ := pc.Get(mathBlockInfoKey).(*mathBlockData)
+	if data != nil && data.closed {
+		return parser.Close
+	}
+
 	line, _ := reader.PeekLine()
+	trimmedRight := bytes.TrimRight(line, " \t\r\n")
 	trimmed := bytes.TrimSpace(line)
-	if bytes.Equal(trimmed, []byte("$$")) || bytes.HasSuffix(trimmed, []byte("$$")) {
+	if bytes.Equal(trimmed, []byte("$$")) || bytes.HasSuffix(trimmedRight, []byte("$$")) {
 		reader.AdvanceToEOL()
 		mb := node.(*MathBlock)
 		if !bytes.Equal(trimmed, []byte("$$")) {
-			content := trimmed[:len(trimmed)-2]
-			if len(content) > 0 {
+			content := trimmedRight[:len(trimmedRight)-2]
+			trimmedContent := bytes.TrimSpace(content)
+			if len(trimmedContent) > 0 {
 				if len(mb.Content) > 0 {
 					mb.Content = append(mb.Content, '\n')
 				}
-				mb.Content = append(mb.Content, content...)
+				mb.Content = append(mb.Content, trimmedContent...)
 			}
+		}
+		if data != nil {
+			data.closed = true
 		}
 		return parser.Close
 	}
@@ -199,6 +234,7 @@ func (b *mathBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.
 func (b *mathBlockParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
 	mb := node.(*MathBlock)
 	mb.Content = bytes.TrimSpace(mb.Content)
+	pc.Set(mathBlockInfoKey, nil)
 }
 
 // --- HTML renderer ---
