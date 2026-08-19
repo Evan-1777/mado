@@ -2,11 +2,12 @@
 <workflow>
 ## 工作流规则
 
+- .docs/SCOPE.md：项目定位与边界
 - .docs/Project.md：项目基本信息
 - .docs/Plan.md：当前活跃阶段计划（活跃阶段开始时按 .docs/Plan.example.md 格式创建于根目录；阶段完成后按 Archive 流程移入 .docs/）
 - .docs/Tasks.md：当前活跃阶段任务（活跃阶段开始时按 .docs/Tasks.example.md 格式创建于根目录；阶段完成后按 Archive 流程移入 .docs/）
 
-**代码库变更后，须同步维护 Project.md。**
+**进入任何阶段前，先读 SCOPE.md 与 Project.md 建立上下文；代码库变更后，须同步维护 Project.md。**
 
 > 注：根目录是否同时存在 Plan.md / Tasks.md 取决于是否有活跃阶段；阶段完成后按 Archive 流程移入 .docs/，无活跃阶段时根目录仅保留 .docs/ 中的 example 模板。
 
@@ -15,7 +16,7 @@
 ### Explore
 
 - **任务**：
-  1. 阅读.docs/Project.md文件详细了解项目
+  1. 阅读 `.docs/SCOPE.md` 与 `.docs/Project.md` 了解项目定位与基本信息
   2. 阅读用户提供的全部上下文（代码片段、报错、需求描述）
   3. 检索相关文件，理解现有架构与依赖关系
   4. 识别关键模块、数据流与潜在冲突点
@@ -59,6 +60,7 @@
 - **任务**：
   1. 按 Task 顺序执行，每完成一项更新状态为 DONE
 - **约束**：
+  - 动手修改前须针对当前 Task 相关文件进行必要探索，确认实现细节与调用约定
   - 禁止批量修改无关文件
   - 每步变更后须自查是否符合 Task 描述
 
@@ -153,7 +155,7 @@ Rules: no parent channel; on blockers call advisor; return executor format repor
 
 ## 工作流组合
 
-> **关键词冲突规则**：当输入同时匹配多个工作流关键词时，取更具体（更长）的匹配。例如含 "Main-Split" 时匹配 Main-Split，不再匹配 Main。
+> **关键词冲突规则**：当输入同时匹配多个工作流关键词时，取更具体（更长）的匹配。例如含 "Main-Split" 或 "Main-hybrid" 时匹配具体工作流，不再匹配 Main。
 
 - **Main**（用户输入含 "Main"）：`Explore → Plan → Formulate Tasks → Execute → Test → Document Maintenance → Archive → Git Commit`
 - **Init**（用户输入含 "Init"）：`Explore → 生成/更新 Project.md → Git Commit`
@@ -188,6 +190,13 @@ Rules: no parent channel; on blockers call advisor; return executor format repor
 
   - thinking 取值规则见 [Subagent 定义](#subagent-定义)
   - **Tasks.md 硬约束**：验收标准须可被「运行命令 + 看输出」机械验证
+- **Main-hybrid**（用户输入含 "Main-hybrid"）：`Explore → Plan → Formulate Tasks` ‖ `Explore-lite → Execute → Test → Document Maintenance → Archive → Git Commit`
+  - 将前期规划（Explore → Formulate Tasks）与后续交付（Explore-lite → Git Commit）拆分为以 `‖` 为界的两个独立阶段，用于跨模型/跨工具协同交付（如高推理模型规划 + 高性价比/编码模型执行）：
+  - **前期规划**：深度阅读 SCOPE.md、Project.md 与代码库文件，制定全局考量的 Plan.md 与高精度、可机械验证的 Tasks.md。**Formulate Tasks 产出 Tasks.md 后必须立即停止并结束当前回复，等待交接，禁止继续执行后续交付阶段。**
+  - **后续交付**：由接手的执行模型在下一轮对话或新工具会话中启动：
+    - **Explore-lite**：执行模型载入上下文（SCOPE/Project/Plan/Tasks）后进行的轻量探索，聚焦查阅当前 Plan 与 Task 关联的源文件与调用链，快速建立必备的项目细节知识以准确理解并执行任务。
+    - **Execute ~ Git Commit**：依次执行 Task、验证、维护文档、归档并提交。
+  - 适用：跨模型智商梯度调度（高推理模型做规划 + 高性价比/编码模型做执行）、跨 Agent 工具协同交付。
 - **Quick**（用户输入含 "Quick"）：`Explore → Formulate Tasks → Execute → Document Maintenance → Archive → Git Commit`
   - 跳过 Plan，Task 粒度更细，单 Task 修改不超过 3 个文件，禁止跨模块大重构
 - **Fast**（用户输入含 "Fast"）：`Explore → Plan（轻量）→ Execute → Document Maintenance → Git Commit`
