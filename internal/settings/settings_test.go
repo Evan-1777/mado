@@ -47,3 +47,50 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Fatalf("load with missing file errored: %v", err)
 	}
 }
+
+// TestSettingsDefaults verifies first launch defaults for all fields.
+func TestSettingsDefaults(t *testing.T) {
+	withTempAPPDATA(t)
+	s, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if s.Theme != DefaultTheme {
+		t.Fatalf("theme = %q, want %q", s.Theme, DefaultTheme)
+	}
+	if s.WordWrap != DefaultWordWrap {
+		t.Fatalf("wordWrap = %v, want %v", s.WordWrap, DefaultWordWrap)
+	}
+	if s.Math != DefaultMath {
+		t.Fatalf("math = %v, want %v", s.Math, DefaultMath)
+	}
+}
+
+// TestSettingsSaveReload verifies saved WordWrap/Math survive reload.
+func TestSettingsSaveReload(t *testing.T) {
+	withTempAPPDATA(t)
+	want := Settings{Theme: "light", WordWrap: false, Math: false}
+	if err := Save(want); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	s, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if s.Theme != want.Theme || s.WordWrap != want.WordWrap || s.Math != want.Math {
+		t.Fatalf("round trip: got %+v want %+v", s, want)
+	}
+}
+
+// TestSettingsSaveReloadDefaults verifies default bool values round-trip.
+func TestSettingsSaveReloadDefaults(t *testing.T) {
+	withTempAPPDATA(t)
+	want := Settings{Theme: DefaultTheme, WordWrap: true, Math: true}
+	if err := Save(want); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	s, _ := Load()
+	if s.WordWrap != true || s.Math != true {
+		t.Fatalf("defaults round trip: got %+v", s)
+	}
+}

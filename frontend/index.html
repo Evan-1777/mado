@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Mado</title>
     <link rel="stylesheet" href="./app.css"/>
+    <link rel="stylesheet" href="./katex.min.css"/>
     <style>
         /* Prevent white flash during startup: frame matches app background. */
         html, body { background: #0f1117; }
@@ -14,6 +15,38 @@
     <div id="app"></div>
     <!-- Unsaved-changes confirm: native <dialog> gives us Esc/cancel, focus
          trapping and top-layer stacking over the preview iframe for free. -->
+    <!-- Settings: Win11 Fluent style grouped card with toggle switches -->
+    <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
+        <form method="dialog" class="settings-form">
+            <div class="settings-head">
+                <h2 id="settings-dialog-title">设置</h2>
+                <button type="submit" value="close" class="settings-close" aria-label="关闭">✕</button>
+            </div>
+            <div class="settings-body">
+                <section class="settings-group">
+                    <h3 class="settings-group-title">编辑器</h3>
+                    <label class="settings-row">
+                        <span class="settings-label">自动换行</span>
+                        <span class="toggle"><input type="checkbox" id="setting-word-wrap" /><span class="toggle-track"><span class="toggle-thumb"></span></span></span>
+                    </label>
+                </section>
+                <section class="settings-group">
+                    <h3 class="settings-group-title">渲染</h3>
+                    <label class="settings-row">
+                        <span class="settings-label">公式渲染 (KaTeX)</span>
+                        <span class="toggle"><input type="checkbox" id="setting-math" /><span class="toggle-track"><span class="toggle-thumb"></span></span></span>
+                    </label>
+                </section>
+                <section class="settings-group">
+                    <h3 class="settings-group-title">外观</h3>
+                    <label class="settings-row">
+                        <span class="settings-label">深色主题</span>
+                        <span class="toggle"><input type="checkbox" id="setting-theme" /><span class="toggle-track"><span class="toggle-thumb"></span></span></span>
+                    </label>
+                </section>
+            </div>
+        </form>
+    </dialog>
     <dialog id="close-dialog" aria-labelledby="close-dialog-title">
         <form method="dialog">
             <h2 id="close-dialog-title">未保存的修改</h2>

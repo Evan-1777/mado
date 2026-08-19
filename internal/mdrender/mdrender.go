@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	mathjax "github.com/litao91/goldmark-mathjax"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/ast"
@@ -31,6 +32,7 @@ func Render(md string) (string, error) {
 		goldmark.WithExtensions(
 			extension.GFM,
 			extension.Typographer,
+			mathjax.MathJax,
 			highlighting.NewHighlighting(
 				highlighting.WithStyle("github"),
 				highlighting.WithFormatOptions(

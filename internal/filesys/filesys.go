@@ -85,12 +85,14 @@ func GetLastFile() (string, error) {
 		}
 		return "", err
 	}
-	var store map[string]string
+	var store map[string]any
 	if err := json.Unmarshal(data, &store); err != nil {
 		return "", err
 	}
-	if last, ok := store[lastFileKey]; ok && last != "" {
-		return last, nil
+	if v, ok := store[lastFileKey]; ok {
+		if last, ok := v.(string); ok && last != "" {
+			return last, nil
+		}
 	}
 	return persistWelcome()
 }
@@ -118,7 +120,7 @@ func SetLastFile(path string) error {
 	if err != nil {
 		return err
 	}
-	store := map[string]string{}
+	store := map[string]any{}
 	if data, err := os.ReadFile(p); err == nil {
 		_ = json.Unmarshal(data, &store)
 	}

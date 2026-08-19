@@ -24,8 +24,8 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.4：Editor/Preview 聚焦模式多层目录侧栏完成，待 Windows 交互验收）
-- **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、数学公式、Mermaid 图表。
+- **当前阶段**：开发中（v1.5：公式渲染 KaTeX + 设置页 + 编辑器自动换行完成，待 Windows 交互验收）
+- **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
 
@@ -44,7 +44,7 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖，约 544K）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实配置目录：隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
+- **如何测试**：`go test ./...`（4 个包：filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实配置目录：隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`；前端零产物语法检查用 `esbuild --loader:.css=empty`（KaTeX CSS 外置，bundle 不解析 `katex.min.css` 内字体）
 
 ## 3. 目录结构与模块职责
 
@@ -59,7 +59,7 @@ internal/settings/       # 主题等用户偏好持久化（共享同一 JSON �
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
 frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
-frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
+frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；含 katex.min.css + fonts/，gitignored）
 build/bin/mado.exe       # 打包输出（~15.6MB）
 docs/                    # 用户文档
 ```
@@ -70,8 +70,12 @@ docs/                    # 用户文档
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md) → safe HTML`（script 已剥离）
   - `theme.ThemeCSS(t) → 组合预览 CSS`（tokens + base + theme 特化）
+- **核心模块补充**：
+  - `internal/settings.Settings`：`Theme`/`WordWrap`/`Math` 三字段持久化，共享 `settings.json`，`Save`/`Load` 用 `map[string]any` 以兼容布尔与字符串混存。
+  - `internal/mdrender`：接入 `goldmark-mathjax` 扩展，输出 `span.math.inline`/`span.math.display` 结构；前端 KaTeX `renderToString` 再转为静态 HTML（`math=false` 时退化为 `$..$` 文本）。
+  - `frontend`：KaTeX CSS/字体静态分发（`build` 拷贝 `katex.min.css` + `fonts/` 至 `dist/`，HTML 引用外置 `katex.min.css`，bundle 以 `--loader:.css=empty` 跳过 CSS 内字体解析）；CodeMirror `wrapCompartment` 热切换 `EditorView.lineWrapping`；设置页为 `<dialog id="settings-dialog">`（Win11 分组卡片 + Toggle，`Ctrl+,` 与齿轮按钮唤起）。
 - **数据流**：
-  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）
+  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；并加载 `GetSettings()` 初始化主题/换行/公式状态（`WordWrap`/`Math` 缺省回退 `true`）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂（srcdoc 重建后自动恢复）
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
@@ -110,10 +114,13 @@ docs/                    # 用户文档
 - 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
 - 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，大量标题不识别——已修复为 `split('\n')`（2026-08-18）；同次修复遗漏正则内 `\\s` 转义错误，导致 fenced code block 检测与 ATX 标题匹配失败（`/^\\\\s*(```|~~~)/` 与 `/^(\\\\s{0,3})(#{1,6})\\\\s+/` 中 `\\\\s` 匹配字面量反斜杠+s 而非空白字符类），代码块内 `#` 被误识别为标题、真实标题不被识别——已补充修复为 `\\s`（2025-06-01）」
 - 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
+- 「`settings.json` 共享读写须用 `map[string]any` 而非 `map[string]string`——原因：v1.5 新增 `wordWrap`/`math` 布尔字段，旧 `map[string]string` 反序列化直接报错，filesys 与 settings 双方读写均须 `any` + 类型断言，缺失字段回退默认值（`WordWrap=true`/`Math=true`）」
+- 「前端 KaTeX 资源为外置静态分发而非走 esbuild CSS 打包——原因：`katex.min.css` 内 `url(fonts/*.woff2)` 字体引用会使 esbuild 要求 `woff2`/`woff`/`ttf` loader，即使配 loader 也会把字体打进 bundle 增大体积；改为 `build` 脚本拷贝 `katex.min.css` + `fonts/` 至 `dist/`，HTML 外置 `<link href="./katex.min.css">`，bundle 中 `import 'katex/dist/katex.min.css'` 移除，零产物检查用 `--loader:.css=empty` 忽略 `style.css`」
 
 ## 7. 外部依赖与集成
 
 - **运行时依赖**：系统 Edge WebView2 Runtime（Wails 硬依赖，Windows 10/11 自带；目标平台）
+- **Go 依赖**：`github.com/litao91/goldmark-mathjax`（公式解析，`goldmark.MathJax` 扩展，`$..$`/`$$..$$` → `span.math.inline/display`）；`katex`（前端 `^0.18.4`，`renderToString` 纯静态渲染，零脚本注入 iframe）
 - **本地工具**：`go`（`~/.local/go/bin`，用户级）；`npm` → 前端依赖管理；`esbuild` → 前端打包（frontend/node_modules 内，无需全局装）；wails CLI 仅云端 CI 使用
 
 ## 8. 决策记录
@@ -137,6 +144,8 @@ docs/                    # 用户文档
 - 2026-08-15 关闭确认改用前端原生 `<dialog>` 模态（`askUnsaved()`）而非修复 Go 侧英文返回值映射——理由：wails v2 Windows `MessageDialog` 恒为 MB_YESNO 两键（无取消/X/Esc，误触关闭只能存或丢，有数据丢失风险）且返回英文串曾致中文匹配失效；`<dialog>` 在 WebView2 原生支持 Esc/焦点囚禁/顶层叠放，三态完整，新建流程复用同一组件
 - 2026-08-14 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
 - 2026-08-14 字体用本地栈（Cascadia Code/Consolas）而非网络字体——理由：离线可用、无 FOUT
+- 2026-08-19 公式渲染选 KaTeX `renderToString` 纯静态 HTML 而非 MathJax 运行时——理由：预览 iframe 为 `sandbox="allow-same-origin"` 零脚本沙箱，KaTeX 在主线程预渲染为静态 DOM 注入，无脚本执行、体积小、样式与明暗主题自适应；解析侧用 `goldmark-mathjax` 原生接入 goldmark 管道，自动保护 LaTeX 符号（`_`/`*` 不被误判为强调）
+- 2026-08-19 编辑器自动换行用 CodeMirror `EditorView.lineWrapping` + `Compartment` 而非 CSS 覆盖——理由：`lineWrapping` 为官方排版能力，通过 `Compartment.reconfigure` 无刷新热切换，保持光标与滚动连续性；设置页复用 `<dialog>` 体系（与关闭确认一致），Win11 Fluent 分组卡片 + Toggle 开关，`Ctrl+,` 快捷键与齿轮按钮双入口
 
 ## 9. 术语表
 

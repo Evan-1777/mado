@@ -19,11 +19,19 @@ const (
 
 	// DefaultTheme is used when no persisted value exists.
 	DefaultTheme = "dark"
+
+	// DefaultWordWrap controls whether the editor wraps long lines.
+	DefaultWordWrap = true
+
+	// DefaultMath controls whether LaTeX math is rendered.
+	DefaultMath = true
 )
 
 // Settings holds user preferences persisted to disk.
 type Settings struct {
-	Theme string
+	Theme    string `json:"Theme"`
+	WordWrap bool   `json:"WordWrap"`
+	Math     bool   `json:"Math"`
 }
 
 // settingsPath returns the shared settings JSON path.
@@ -42,7 +50,7 @@ func settingsPath() (string, error) {
 // Load reads the persisted settings. A missing or corrupt file falls back to
 // defaults and never errors.
 func Load() (Settings, error) {
-	s := Settings{Theme: DefaultTheme}
+	s := Settings{Theme: DefaultTheme, WordWrap: DefaultWordWrap, Math: DefaultMath}
 	path, err := settingsPath()
 	if err != nil {
 		return s, err
@@ -54,13 +62,25 @@ func Load() (Settings, error) {
 		}
 		return s, err
 	}
-	var store map[string]string
+	var store map[string]any
 	if err := json.Unmarshal(data, &store); err != nil {
 		// Corrupt store: fall back to defaults.
 		return s, nil
 	}
-	if theme, ok := store[themeKey]; ok && theme != "" {
-		s.Theme = theme
+	if v, ok := store[themeKey]; ok {
+		if str, ok := v.(string); ok && str != "" {
+			s.Theme = str
+		}
+	}
+	if v, ok := store["wordWrap"]; ok {
+		if b, ok := v.(bool); ok {
+			s.WordWrap = b
+		}
+	}
+	if v, ok := store["math"]; ok {
+		if b, ok := v.(bool); ok {
+			s.Math = b
+		}
 	}
 	return s, nil
 }
@@ -72,11 +92,13 @@ func Save(s Settings) error {
 	if err != nil {
 		return err
 	}
-	store := map[string]string{}
+	store := map[string]any{}
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, &store)
 	}
 	store[themeKey] = s.Theme
+	store["wordWrap"] = s.WordWrap
+	store["math"] = s.Math
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return err

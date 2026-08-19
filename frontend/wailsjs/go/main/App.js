@@ -46,12 +46,24 @@ export function SaveFile(arg1, arg2) {
   return window['go']['main']['App']['SaveFile'](arg1, arg2);
 }
 
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
+}
+
 export function SetDirty(arg1) {
   return window['go']['main']['App']['SetDirty'](arg1);
 }
 
+export function SetMath(arg1) {
+  return window['go']['main']['App']['SetMath'](arg1);
+}
+
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SetWordWrap(arg1) {
+  return window['go']['main']['App']['SetWordWrap'](arg1);
 }
 
 export function SetTitle(arg1) {

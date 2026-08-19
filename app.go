@@ -38,7 +38,7 @@ func (a *App) startup(ctx context.Context) {
 	s, err := settings.Load()
 	if err != nil {
 		// Best effort: fall back to defaults.
-		s = settings.Settings{Theme: settings.DefaultTheme}
+		s = settings.Settings{Theme: settings.DefaultTheme, WordWrap: settings.DefaultWordWrap, Math: settings.DefaultMath}
 	}
 	a.settings = s
 }
@@ -103,6 +103,34 @@ func (a *App) SetTheme(themeName string) error {
 		runtime.WindowSetLightTheme(a.ctx)
 	}
 	return nil
+}
+
+// SaveSettings persists the full settings object and refreshes window chrome if needed.
+func (a *App) SaveSettings(s settings.Settings) error {
+	if s.Theme != "light" && s.Theme != "dark" {
+		s.Theme = settings.DefaultTheme
+	}
+	if err := settings.Save(s); err != nil {
+		return err
+	}
+	a.settings = s
+	runtime.WindowSetDarkTheme(a.ctx)
+	if s.Theme == "light" {
+		runtime.WindowSetLightTheme(a.ctx)
+	}
+	return nil
+}
+
+// SetWordWrap persists the word-wrap preference.
+func (a *App) SetWordWrap(wrap bool) error {
+	a.settings.WordWrap = wrap
+	return settings.Save(a.settings)
+}
+
+// SetMath persists the math rendering preference.
+func (a *App) SetMath(enabled bool) error {
+	a.settings.Math = enabled
+	return settings.Save(a.settings)
 }
 
 // SetTitle updates the window title and the custom title bar text.

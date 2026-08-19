@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"require('fs').copyFileSync('index.html','dist/index.html')\"",
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs'),path=require('path');fs.copyFileSync('index.html','dist/index.html');const src='node_modules/katex/dist',dst='dist';fs.copyFileSync(path.join(src,'katex.min.css'),path.join(dst,'katex.min.css'));fs.mkdirSync(path.join(dst,'fonts'),{recursive:true});for(const f of fs.readdirSync(path.join(src,'fonts')))fs.copyFileSync(path.join(src,'fonts',f),path.join(dst,'fonts',f));\"",
     "dev": "esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch"
   },
   "dependencies": {
@@ -14,7 +14,8 @@
     "@codemirror/state": "^6.5.0",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.1",
-    "@lezer/highlight": "^1.2.1"
+    "@lezer/highlight": "^1.2.1",
+    "katex": "^0.18.4"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

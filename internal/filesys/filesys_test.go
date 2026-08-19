@@ -1,6 +1,7 @@
 package filesys
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,6 +59,44 @@ func TestLastFilePersistence(t *testing.T) {
 	}
 	if got != path {
 		t.Fatalf("got %q want %q", got, path)
+	}
+}
+
+// TestSettingsFilesysCoexistence verifies GetLastFile survives bool fields.
+func TestSettingsFilesysCoexistence(t *testing.T) {
+	setUserConfigDir(t)
+	path := filepath.Join(t.TempDir(), "coexist.md")
+	if err := WriteFile(path, "hello"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := SetLastFile(path); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	// Simulate settings.Save writing wordWrap/math by directly mutating the JSON.
+	{
+		base, err := appDataDir()
+		if err != nil {
+			t.Fatalf("appDataDir: %v", err)
+		}
+		p := filepath.Join(base, "settings.json")
+		data, _ := os.ReadFile(p)
+		m := map[string]any{}
+		if len(data) > 0 {
+			_ = json.Unmarshal(data, &m)
+		}
+		m["wordWrap"] = false
+		m["math"] = false
+		b, _ := json.MarshalIndent(m, "", "  ")
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatalf("write bools: %v", err)
+		}
+	}
+	got, err := GetLastFile()
+	if err != nil {
+		t.Fatalf("get after bools: %v", err)
+	}
+	if got != path {
+		t.Fatalf("coexistence: got %q want %q", got, path)
 	}
 }
 

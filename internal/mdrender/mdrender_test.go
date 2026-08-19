@@ -151,6 +151,48 @@ func TestRenderDuplicateHeadingIDs(t *testing.T) {
 	}
 }
 
+// TestMathInline verifies inline math renders as span.math.inline with \(..\) delimiters.
+func TestMathInline(t *testing.T) {
+	out, err := Render("$E=mc^2$")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !contains(out, `class="math inline"`) {
+		t.Fatalf("inline math: missing class: %q", out)
+	}
+	if !contains(out, `\(E=mc^2\)`) {
+		t.Fatalf("inline math: missing delimiters: %q", out)
+	}
+}
+
+// TestMathDisplay verifies display math renders as span.math.display with \[..\] delimiters.
+func TestMathDisplay(t *testing.T) {
+	out, err := Render("$$\n\\sum_{i=1}^n i\n$$")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !contains(out, `class="math display"`) {
+		t.Fatalf("display math: missing class: %q", out)
+	}
+	if !contains(out, `\[`) || !contains(out, `\]`) {
+		t.Fatalf("display math: missing delimiters: %q", out)
+	}
+}
+
+// TestMathProtectsUnderscore verifies LaTeX inside math is not mis-parsed as emphasis.
+func TestMathProtectsUnderscore(t *testing.T) {
+	out, err := Render("$x_1 + x_2 * y_3$")
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if contains(out, "<em>") || contains(out, "<strong>") {
+		t.Fatalf("math protection: underscore/star inside math became emphasis: %q", out)
+	}
+	if !contains(out, `class="math inline"`) {
+		t.Fatalf("math protection: not rendered as math: %q", out)
+	}
+}
+
 func contains(haystack, needle string) bool {
 	for i := 0; i+len(needle) <= len(haystack); i++ {
 		if haystack[i:i+len(needle)] == needle {

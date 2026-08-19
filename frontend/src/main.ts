@@ -1,4 +1,5 @@
 import './style.css';
+import katex from 'katex';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -7,7 +8,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty,
+  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SaveSettings, SetDirty,
   ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
@@ -23,9 +24,13 @@ function baseName(p: string): string {
 
 interface Settings {
   Theme: string;
+  WordWrap: boolean;
+  Math: boolean;
 }
 
 let currentTheme: 'dark' | 'light' = 'dark';
+let currentWordWrap = true;
+let currentMath = true;
 let currentFile = '';
 let dirty = false;
 let renderVersion = 0;         // guards against out-of-order fetch responses
@@ -73,6 +78,8 @@ const GLYPH_CHEVRON_RIGHT = `<svg width="12" height="12" viewBox="0 0 16 16" fil
   <path d="M6 4l4 4-4 4"/>
 </svg>`;
 
+const GLYPH_SETTINGS = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.6"/><path d="M8 1.5v1.2M8 13.3V14.8M1.5 8H2.7M13.3 8H14.8M3.2 3.2l.85.85M12 12l.8.8M12.8 3.2l-.85.85M3.2 12.8l.85-.85"/></svg>`;
+
 const titlebar = document.createElement('header');
 titlebar.className = 'titlebar';
 titlebar.innerHTML = `
@@ -82,6 +89,7 @@ titlebar.innerHTML = `
     <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
     <button class="icon-btn" id="btn-new" title="新建文件 (Ctrl+N)" aria-label="新建文件">${GLYPH_NEW}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
+    <button class="icon-btn" id="btn-settings" title="设置 (Ctrl+,)" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
     <button class="win-btn win-min" title="Minimise" aria-label="Minimise"></button>
@@ -380,17 +388,58 @@ tocToggleAll.addEventListener('click', () => {
   renderToc();
 });
 
-// ---------------------------------------------------------------- theme
+// ---------------------------------------------------------------- theme + word-wrap + settings helpers
 
 function applyTheme(theme: 'dark' | 'light') {
   currentTheme = theme;
   document.documentElement.dataset.theme = theme;
-  // CodeMirror theme: swap compartments
   if (cm) {
     cm.dispatch({ effects: themeCompartment.reconfigure(theme === 'dark' ? [oneDark] : [lightSyntax]) });
   }
-  previewCss = ''; // invalidate cached stylesheet so preview follows theme
+  previewCss = '';
   void refreshPreview();
+}
+
+function applyWordWrap(wrap: boolean) {
+  currentWordWrap = wrap;
+  if (cm) {
+    cm.dispatch({ effects: wrapCompartment.reconfigure(wrap ? [EditorView.lineWrapping] : []) });
+  }
+}
+
+async function persistSettings() {
+  try {
+    await SaveSettings({ Theme: currentTheme, WordWrap: currentWordWrap, Math: currentMath });
+  } catch (err) {
+    console.error('SaveSettings failed', err);
+  }
+}
+
+function renderMathInHtml(html: string, mathEnabled: boolean): string {
+  if (mathEnabled) {
+    // Inline: \(tex\)  Display: \[tex\] with class guards from goldmark-mathjax
+    const inlineRe = /<span class="math inline">\\\((.*?)\\\)<\/span>/gs;
+    const displayRe = /<span class="math display">\\\[(.*?)\\\]<\/span>/gs;
+    let out = html.replace(inlineRe, (_m: string, tex: string) => {
+      try {
+        return katex.renderToString(tex, { displayMode: false, throwOnError: false });
+      } catch {
+        return `<span class="katex-error">${tex}</span>`;
+      }
+    });
+    out = out.replace(displayRe, (_m: string, tex: string) => {
+      try {
+        return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
+      } catch {
+        return `<span class="katex-error">${tex}</span>`;
+      }
+    });
+    return out;
+  }
+  // Math disabled: degrade to raw dollar delimiters as plain text
+  const inlineRe = /<span class="math inline">\\\((.*?)\\\)<\/span>/gs;
+  const displayRe = /<span class="math display">\\\[(.*?)\\\]<\/span>/gs;
+  return html.replace(displayRe, (_m: string, tex: string) => `$$${tex}$$`).replace(inlineRe, (_m: string, tex: string) => `$${tex}$`);
 }
 
 // Light syntax highlighting for CodeMirror (dark default is oneDark).
@@ -416,6 +465,7 @@ async function toggleTheme() {
 // ---------------------------------------------------------------- CodeMirror
 
 const themeCompartment = new Compartment();
+const wrapCompartment = new Compartment();
 
 const editorState = EditorState.create({
   doc: '',
@@ -433,6 +483,7 @@ const editorState = EditorState.create({
     markdown(),
     history(),
     themeCompartment.of([oneDark]),
+    wrapCompartment.of(currentWordWrap ? [EditorView.lineWrapping] : []),
     keymap.of([
       ...defaultKeymap,
       ...historyKeymap,
@@ -475,9 +526,10 @@ async function refreshPreview() {
   const md = cm.state.doc.toString();
   const version = ++renderVersion;
   try {
-    const [html, css] = await Promise.all([Render(md), cssForTheme()]);
-    if (version !== renderVersion) return; // superseded by newer input
+    const [rawHtml, css] = await Promise.all([Render(md), cssForTheme()]);
+    if (version !== renderVersion) return;
     previewCss = css;
+    const html = renderMathInHtml(rawHtml, currentMath);
     writePreview(html);
     updateToc(md);
     statusEl.textContent = dirty ? 'Unsaved changes' : 'Ready';
@@ -829,6 +881,56 @@ document.getElementById('btn-open')!.addEventListener('click', () => { void open
 document.getElementById('btn-save')!.addEventListener('click', () => { void saveCurrent(); });
 document.getElementById('btn-new')!.addEventListener('click', () => { void newFile(); });
 document.getElementById('btn-theme')!.addEventListener('click', () => { void toggleTheme(); });
+document.getElementById('btn-settings')!.addEventListener('click', () => { openSettings(); });
+
+// ---------------------------------------------------------------- settings dialog
+
+function openSettings() {
+  const dlg = document.getElementById('settings-dialog') as HTMLDialogElement;
+  if (!dlg) return;
+  (document.getElementById('setting-word-wrap') as HTMLInputElement).checked = currentWordWrap;
+  (document.getElementById('setting-math') as HTMLInputElement).checked = currentMath;
+  (document.getElementById('setting-theme') as HTMLInputElement).checked = currentTheme === 'dark';
+  if (!dlg.open) dlg.showModal();
+}
+
+function bindSettingsDialog() {
+  const dlg = document.getElementById('settings-dialog') as HTMLDialogElement | null;
+  if (!dlg) return;
+  const wordWrapEl = document.getElementById('setting-word-wrap') as HTMLInputElement;
+  const mathEl = document.getElementById('setting-math') as HTMLInputElement;
+  const themeEl = document.getElementById('setting-theme') as HTMLInputElement;
+  wordWrapEl.addEventListener('change', () => {
+    applyWordWrap(wordWrapEl.checked);
+    void persistSettings();
+  });
+  mathEl.addEventListener('change', () => {
+    currentMath = mathEl.checked;
+    void refreshPreview();
+    void persistSettings();
+  });
+  themeEl.addEventListener('change', async () => {
+    const next: 'dark' | 'light' = themeEl.checked ? 'dark' : 'light';
+    try { await SetTheme(next); } catch (e) { console.error(e); }
+    applyTheme(next);
+    void persistSettings();
+  });
+  dlg.addEventListener('click', (e) => {
+    const rect = dlg.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      dlg.close();
+    }
+  });
+}
+bindSettingsDialog();
+
+// Ctrl+, opens settings (comma key, with or without Shift)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === ',' || e.code === 'Comma')) {
+    e.preventDefault();
+    openSettings();
+  }
+});
 
 // Mode tabs
 toolbar.querySelectorAll('.seg button').forEach((btn) => {
@@ -867,10 +969,14 @@ async function init() {
   setupResizeController();
   void syncMaximisedState();
   try {
-    const s = await GetSettings();
+    const s: Settings = await GetSettings() as unknown as Settings;
+    currentWordWrap = (s as any).WordWrap ?? true;
+    currentMath = (s as any).Math ?? true;
+    applyWordWrap(currentWordWrap);
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
   } catch (err) {
     console.error('init: settings failed', err);
+    applyWordWrap(true);
     applyTheme('dark');
   }
   try {
