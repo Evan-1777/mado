@@ -33,7 +33,7 @@
   - ★ 易错：路径含中文/空格须加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅保留欢迎文档 `welcome.md`
 - **Shell**：bash
 - **版本管理**：git 仓库（main 分支，无分支策略）
-- **语言 / 运行时**：Go 1.25.3（用户级安装于 `~/.local/go`，单版本，会话内 `export PATH=$HOME/.local/go/bin:$PATH`）；Node.js 24 + npm 11（前端构建）
+- **语言 / 运行时**：Go 1.27.0（本机实测，`~/.local/go` 用户级单版本，会话内 `export PATH=$HOME/.local/go/bin:$PATH`；CI 用 `1.25.x`，`go.mod` 声明 `1.25.0`）；Node.js 24 + npm 11（前端构建）
 - **依赖管理**：Go → `go.mod`/`go.sum`；前端 → `frontend/package.json` + `package-lock.json`（一律 npm，无 pnpm）
 - **如何运行**：
   - 开发：`wails dev`（需 Windows/wails CLI，本机不做）
@@ -41,7 +41,7 @@
   - **本机验证链**（最小占用，产物均 gitignored）：
     1. `cd frontend && npm install --include=dev`（★ 本环境 `NODE_ENV=production` 且 `omit=dev`，不加 `--include=dev` 会跳过 esbuild）
     2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`（stdout 丢弃；★ 必须带 `--loader:.css=empty`，否则 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`）
-    3. `npm run build` 产出 `dist/`（go:embed 依赖，含 KaTeX 资源，约 1.3MB）
+    3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
 - **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
@@ -61,7 +61,7 @@ internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/th
 frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
-build/bin/mado.exe       # 打包输出（~15.6MB）
+build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
 docs/                    # 用户文档
 ```
 
@@ -95,7 +95,7 @@ docs/                    # 用户文档
 
 ## 6. 约束与已知坑
 
-- 「开发环境 2026-08-15 迁移至 Linux x86_64，前端包管理一律 npm，Go 1.25.3 用户级安装于 `~/.local/go`——原因：新环境无 pnpm；wails 全量构建仍由云端 CI 负责，本机仅 vet/test + esbuild 语法检查 + npm run build 产 dist（go:embed 依赖）」
+- 「开发环境 2026-08-15 迁移至 Linux x86_64，前端包管理一律 npm，Go 1.27.0 用户级安装于 `~/.local/go`——原因：新环境无 pnpm；wails 全量构建仍由云端 CI 负责，本机仅 vet/test + esbuild 语法检查 + npm run build 产 dist（go:embed 依赖）」
 - 「本环境 `NODE_ENV=production` 且 npm `omit=dev`——原因：esbuild 是 devDependency，安装必须 `npm install --include=dev`，否则被静默跳过」
 - 「Windows 构建产物验收在云端——原因：SCOPE 约定不占用本机空间做全量构建，CI workflow 产出 exe artifact，由用户在云端触发并下载验收；本机验证限于 go vet/test、零产物 esbuild 语法检查与 npm run build（产物 gitignored）」
 - 「wailsjs 生成绑定需与 Go 导出方法同步——原因：`frontend/wailsjs/` 在 `wails dev/build` 时自动重新生成覆盖，但仓库内提交的副本用于本地 esbuild 语法检查；新增 Go 绑定方法（如 SetDirty）时必须同步手补 App.js/App.d.ts 以便本地验证，CI 生成版本以 Go 为准」
@@ -107,11 +107,11 @@ docs/                    # 用户文档
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
 - 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏或无响应——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档会被替换；即使阻断导航，goldmark 仍会将中文 href fragment 百分号编码，而标题 DOM id 保持 Unicode，直接 `getElementById(href.slice(1))` 查不到。修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），所有链接 preventDefault；fragment 先 `decodeURIComponent`（畸形编码回退原值）再 getElementById + scrollIntoView；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
 - 「Wails v2 Windows 无边框窗口右/下边缘无法缩放——原因：1. Wails 内置 JS 用 `outerWidth` 判定边缘在 WebView2 下受不可见边框偏差影响恒不成立且会重置光标；2. 右侧与右下角存在 iframe/编辑器原生滚动条（15~17px），Chromium 滚动条不向 DOM 分发事件并在近边缘时触发 mouseleave，使纯坐标计算检测失效。修复：通过 `Object.defineProperty` 永久锁定 `window.wails.flags.enableResize = false`，并在顶层 DOM 挂载 8 方向固定把手层（`z-index: 100000`），四角 10px / 四边 6px 穿透覆盖滚动条，`mousedown` 直接 `WailsInvoke("resize:" + edge)`，最大化状态下自适应隐藏（2026-08-18 深度修复）」
-- 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；v1.2 已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
+- 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
 - 「关闭确认由前端统一处理而非 Go 同步回调——原因：保存需要编辑器内容（仅前端 CodeMirror 持有），`OnBeforeClose` 是同步回调无法等待前端异步保存；因此 Go 侧 dirty 时仅 emit `request-close` 事件并阻止关闭，决策权交给前端」
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
 - 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
-- 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，大量标题不识别——已修复为 `split('\n')`（2026-08-18）；同次修复遗漏正则内 `\\s` 转义错误，导致 fenced code block 检测与 ATX 标题匹配失败（`/^\\\\s*(```|~~~)/` 与 `/^(\\\\s{0,3})(#{1,6})\\\\s+/` 中 `\\\\s` 匹配字面量反斜杠+s 而非空白字符类），代码块内 `#` 被误识别为标题、真实标题不被识别——已补充修复为 `\\s`（2025-06-01）」
+- 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，正则 `\\s` 同理匹配字面量反斜杠+s——均于 2026-08-16 修复为 `split('\n')` 与 `\s`（commit 2e51927 / 731b3fb）」
 - 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
 - 「偏好持久化便携化：共享 settings.json 迁移至 exe 所在目录——原因：便携化需求；启动时若 exe 目录无 settings.json 则单次从旧 APPDATA 位置迁移；若 exe 部署于受写保护目录则持久化不可写为已知限制」
 - 「原生 `<dialog>` 必须在 DOM 根部并列放置，禁止嵌套——原因：嵌套在未打开的 `<dialog>` 内的子对话框在 `showModal()` 时，虽然挂入 top layer 但受父级 `display: none` 与渲染流约束不可见，同时激活动态遮罩捕获所有点击，导致应用假死（2026-08-19 修复）」
