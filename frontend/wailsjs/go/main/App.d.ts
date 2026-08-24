@@ -28,6 +28,8 @@ export function SetDirty(arg1:boolean):Promise<void>;
 
 export function SetMath(arg1:boolean):Promise<void>;
 
+export function SetPreviewFont(arg1:string):Promise<void>;
+
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SetTitle(arg1:string):Promise<void>;

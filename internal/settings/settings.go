@@ -1,5 +1,6 @@
-// Package settings persists user preferences (theme, wrap, math) into the shared
-// settings.json file in the executable directory alongside the filesys lastfile record.
+// Package settings persists user preferences (theme, wrap, math, preview font)
+// into the shared settings.json file in the executable directory alongside the
+// filesys lastfile record.
 package settings
 
 import (
@@ -7,6 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 )
 
 const (
@@ -14,21 +17,62 @@ const (
 	AppDir = "Mado"
 
 	// JSON keys for persisted settings.
-	themeKey = "theme"
-	wrapKey  = "wrap"
-	mathKey  = "math"
+	themeKey       = "theme"
+	wrapKey        = "wrap"
+	mathKey        = "math"
+	previewFontKey = "previewFont"
 
 	// Default values for preferences.
-	DefaultTheme = "dark"
-	DefaultWrap  = true
-	DefaultMath  = true
+	DefaultTheme       = "dark"
+	DefaultWrap        = true
+	DefaultMath        = true
+	DefaultPreviewFont = "Cascadia Code"
+
+	// MaxPreviewFontLen is the maximum accepted length of a preview font name.
+	MaxPreviewFontLen = 100
 )
 
 // Settings holds user preferences persisted to disk.
 type Settings struct {
-	Theme string
-	Wrap  bool
-	Math  bool
+	Theme       string
+	Wrap        bool
+	Math        bool
+	PreviewFont string
+}
+
+// FontRejected is returned by NormalizePreviewFont when the input is not a
+// valid single font name.
+var FontRejected = errors.New("settings: invalid preview font")
+
+// NormalizePreviewFont trims surrounding whitespace and validates the font
+// name. It rejects empty values, over-long values, control characters and CSS
+// structure separators so a user-supplied value can never escape the font
+// declaration in the composed preview CSS. It returns the trimmed name on
+// success.
+func NormalizePreviewFont(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", FontRejected
+	}
+	if len(name) > MaxPreviewFontLen {
+		return "", FontRejected
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return "", FontRejected
+		}
+		// Double quote, backslash, comma and semicolon terminate declarations
+		// or entries in a font-family list; these break out of the quoted
+		// string in the generated CSS.
+		if r == '"' || r == '\\' || r == ',' || r == ';' {
+			return "", FontRejected
+		}
+	}
+	// CSS comments, at-rules and declaration blocks.
+	if strings.ContainsAny(name, "/*{}@") {
+		return "", FontRejected
+	}
+	return name, nil
 }
 
 // defaultStorePath returns the settings.json path next to the executable.
@@ -52,9 +96,10 @@ func Path() (string, error) {
 // Default returns the default user preferences.
 func Default() Settings {
 	return Settings{
-		Theme: DefaultTheme,
-		Wrap:  DefaultWrap,
-		Math:  DefaultMath,
+		Theme:       DefaultTheme,
+		Wrap:        DefaultWrap,
+		Math:        DefaultMath,
+		PreviewFont: DefaultPreviewFont,
 	}
 }
 
@@ -87,6 +132,12 @@ func Load() (Settings, error) {
 	if math, ok := store[mathKey].(bool); ok {
 		s.Math = math
 	}
+	if font, ok := store[previewFontKey].(string); ok {
+		// Legacy or manually edited invalid font values fall back to the default.
+		if valid, err := NormalizePreviewFont(font); err == nil {
+			s.PreviewFont = valid
+		}
+	}
 	return s, nil
 }
 
@@ -107,6 +158,7 @@ func Save(s Settings) error {
 	store[themeKey] = s.Theme
 	store[wrapKey] = s.Wrap
 	store[mathKey] = s.Math
+	store[previewFontKey] = s.PreviewFont
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return err

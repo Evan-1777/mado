@@ -12,8 +12,7 @@ body {
 }
 
 body {
-  font-family: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI",
-    "Segoe UI", sans-serif;
+  font-family: var(--preview-font);
   font-size: 14.5px;
   line-height: 1.75;
   padding: 2.25rem 2.75rem 4rem;
@@ -61,7 +60,7 @@ a:hover {
 }
 
 code {
-  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-family: var(--preview-font);
   font-size: 0.9em;
   background: var(--code-bg);
   border: 1px solid var(--border);
@@ -142,7 +141,7 @@ hr {
 }
 
 kbd {
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--preview-font);
   font-size: 0.85em;
   background: var(--code-bg);
   border: 1px solid var(--border);

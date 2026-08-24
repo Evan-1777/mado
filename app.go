@@ -103,9 +103,10 @@ func (a *App) GetWelcome() (string, error) {
 	return filesys.GetLastFile()
 }
 
-// GetCSS returns the composed preview stylesheet for the active theme.
+// GetCSS returns the composed preview stylesheet for the active theme and
+// preview font.
 func (a *App) GetCSS() (string, error) {
-	return theme.ThemeCSS(a.settings.Theme)
+	return theme.ThemeCSS(a.settings.Theme, a.settings.PreviewFont)
 }
 
 // GetSettings returns the active persisted settings.
@@ -138,6 +139,18 @@ func (a *App) SetWrap(wrap bool) error {
 // SetMath persists the LaTeX math rendering preference.
 func (a *App) SetMath(math bool) error {
 	a.settings.Math = math
+	return settings.Save(a.settings)
+}
+
+// SetPreviewFont validates and persists the preview font preference. The
+// value is normalized (trimmed) by the settings module; invalid names are
+// rejected without touching the stored state.
+func (a *App) SetPreviewFont(font string) error {
+	name, err := settings.NormalizePreviewFont(font)
+	if err != nil {
+		return err
+	}
+	a.settings.PreviewFont = name
 	return settings.Save(a.settings)
 }
 

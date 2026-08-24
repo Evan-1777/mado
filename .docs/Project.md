@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.5：公式渲染、设置页与偏好持久化便携化完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.5：公式渲染、设置页与偏好持久化便携化、Preview 可配置字体完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -52,7 +52,7 @@
 go.mod / go.sum          # Go 依赖（goldmark、wails v2、chroma 等）
 main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、拖放）
 main_test.go             # 根包测试：旧存储迁移测试
-app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme/SetWrap/SetMath 等
+app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
 internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共享 exe 目录下 settings.json）
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）
@@ -70,12 +70,12 @@ docs/                    # 用户文档
 - **核心模块**：
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
-  - `theme.ThemeCSS(t) → 组合预览 CSS`（tokens + base + theme 特化）
+  - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后）
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；`startup` 自动检查旧配置目录执行一次性迁移
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
-  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区
+  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体变更成功才更新 `currentPreviewFont` 并失效 `previewCss` 缓存触发刷新；失败回填上一次有效值
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
@@ -119,6 +119,7 @@ docs/                    # 用户文档
 - 「KaTeX 静态资源经 Wails 资产服务相对路径加载——原因：srcdoc 帧内以 `<link rel="stylesheet" href="./katex/katex.min.css"/>` 引入样式与字体，继承父文档 baseURL」
 - 「`$` 行内公式首尾空格启发式与货币误判防护——原因：`$5 and $10` 首尾含空格或未闭合不构成公式，直接退化为字面文本」
 - 「行内公式不支持跨行——原因：语法边界清晰、避免未闭合 `$` 跨段污染渲染」
+- 「Preview 字体名注入 CSS 前必须经过 settings.NormalizePreviewFont + theme.cssFontDecl 双重防线——原因：字体名会进入 CSS 变量声明，控制字符/引号/反斜杠/分号/注释符等可逃逸字符串上下文；校验失败时前端回填上一次有效值，不改变后端状态（2026-08-24）」
 
 ## 7. 外部依赖与集成
 
@@ -150,6 +151,7 @@ docs/                    # 用户文档
 - 2026-08-14 关闭确认采用「Go emit request-close → 前端统一处理」而非 Go 同步弹窗——理由：保存需编辑器内容（仅前端持有），旧双弹窗链路（QuitApp→Quit→OnBeforeClose→quitConfirm 二次弹窗且默认取消）导致「点确认关不掉」
 - 2026-08-15 关闭确认改用前端原生 `<dialog>` 模态（`askUnsaved()`）而非修复 Go 侧英文返回值映射——理由：wails v2 Windows `MessageDialog` 恒为 MB_YESNO 两键（无取消/X/Esc，误触关闭只能存或丢，有数据丢失风险）且返回英文串曾致中文匹配失效；`<dialog>` 在 WebView2 原生支持 Esc/焦点囚禁/顶层叠放，三态完整，新建流程复用同一组件
 - 2026-08-14 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
+- 2026-08-24 Preview 字体输入边界在 Go 侧统一校验（normalize + 拒绝控制字符/结构分隔符/超长值）并由 theme 层二次转义后用双引号包裹注入 CSS 变量——理由：settings.json 与 Wails 绑定都是信任边界，仅靠前端校验可被绕过；字体名以 `--preview-font` 变量 + 固定回退栈注入，用户字体缺失时自动退化，不探测、不安装
 - 2026-08-14 字体用本地栈（Cascadia Code/Consolas）而非网络字体——理由：离线可用、无 FOUT
 
 ## 9. 术语表

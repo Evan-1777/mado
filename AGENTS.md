@@ -192,8 +192,8 @@ Rules: no parent channel; on blockers call advisor; return executor format repor
   - **Tasks.md 硬约束**：验收标准须可被「运行命令 + 看输出」机械验证
 - **Main-hybrid**（用户输入含 "Main-hybrid"）：`Explore → Plan → Formulate Tasks` ‖ `Explore-lite → Execute → Test → Document Maintenance → Archive → Git Commit`
   - 将前期规划（Explore → Formulate Tasks）与后续交付（Explore-lite → Git Commit）拆分为以 `‖` 为界的两个独立阶段，用于跨模型/跨工具协同交付（如高推理模型规划 + 高性价比/编码模型执行）：
-  - **前期规划**：深度阅读 SCOPE.md、Project.md 与代码库文件，制定全局考量的 Plan.md 与高精度、可机械验证的 Tasks.md。**Formulate Tasks 产出 Tasks.md 后必须立即停止并结束当前回复，等待交接，禁止继续执行后续交付阶段。**
-  - **后续交付**：由接手的执行模型在下一轮对话或新工具会话中启动：
+  - **前期规划**：在 Explore 前按名称加载 `clean-refactoring` 作为当前规划会话的临时上下文，不写入全局工作流要求。深度阅读 SCOPE.md、Project.md 与代码库文件，制定全局考量的 Plan.md 与高精度、可机械验证的 Tasks.md。**Formulate Tasks 产出 Tasks.md 后必须立即停止并结束当前回复，等待交接，禁止继续执行后续交付阶段。**
+  - **后续交付**：由接手的执行模型在下一轮对话或新工具会话中启动；接手模型依据落盘的 SCOPE、Project、Plan 与 Tasks 建立上下文，不依赖前一会话的临时注入：
     - **Explore-lite**：执行模型载入上下文（SCOPE/Project/Plan/Tasks）后进行的轻量探索，聚焦查阅当前 Plan 与 Task 关联的源文件与调用链，快速建立必备的项目细节知识以准确理解并执行任务。
     - **Execute ~ Git Commit**：依次执行 Task、验证、维护文档、归档并提交。
   - 适用：跨模型智商梯度调度（高推理模型做规划 + 高性价比/编码模型做执行）、跨 Agent 工具协同交付。

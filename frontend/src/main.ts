@@ -9,7 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
   LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty,
-  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath,
+  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -26,9 +26,11 @@ interface Settings {
   Theme: string;
   Wrap: boolean;
   Math: boolean;
+  PreviewFont: string;
 }
 
 let currentTheme: 'dark' | 'light' = 'dark';
+let currentPreviewFont = '';  // last validated preview font ('' until loaded)
 let currentFile = '';
 let dirty = false;
 let renderVersion = 0;         // guards against out-of-order fetch responses
@@ -396,6 +398,31 @@ const setThemeDarkBtn = document.getElementById('set-theme-dark') as HTMLButtonE
 const setThemeLightBtn = document.getElementById('set-theme-light') as HTMLButtonElement | null;
 const setWrapInput = document.getElementById('set-wrap') as HTMLInputElement | null;
 const setMathInput = document.getElementById('set-math') as HTMLInputElement | null;
+const setPreviewFontInput = document.getElementById('set-preview-font') as HTMLInputElement | null;
+
+// Preview font: the persisted value is the single source of truth. The input
+// side keeps the last validated font so a failed SetPreviewFont can restore
+// the input to it instead of leaving a stale value.
+function applyPreviewFont(font: string) {
+  currentPreviewFont = font;
+  previewCss = ''; // invalidate cached stylesheet so preview follows the font
+  void refreshPreview();
+}
+
+async function commitPreviewFont(raw: string) {
+  if (!setPreviewFontInput) return;
+  const value = raw.trim();
+  try {
+    await SetPreviewFont(value);
+    applyPreviewFont(value);
+  } catch (err) {
+    console.error('SetPreviewFont failed', err);
+  } finally {
+    // Restore the input to the last validated font on failure; on success
+    // this is a no-op with the normalized value.
+    setPreviewFontInput.value = currentPreviewFont;
+  }
+}
 
 function syncSettingsModalUI() {
   if (setThemeDarkBtn && setThemeLightBtn) {
@@ -945,6 +972,20 @@ setMathInput?.addEventListener('change', async () => {
   }
 });
 
+// Preview font commits on blur or Enter. Enter is swallowed so the
+// method="dialog" form does not treat it as implicit submission and close
+// the settings modal on every commit.
+setPreviewFontInput?.addEventListener('change', () => {
+  void commitPreviewFont(setPreviewFontInput.value);
+});
+
+setPreviewFontInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void commitPreviewFont(setPreviewFontInput.value);
+  }
+});
+
 // Mode tabs
 toolbar.querySelectorAll('.seg button').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -985,12 +1026,16 @@ async function init() {
     const s = await GetSettings();
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
     applyWrap(s.Wrap !== false);
+    currentPreviewFont = s.PreviewFont || 'Cascadia Code';
     if (setWrapInput) setWrapInput.checked = (s.Wrap !== false);
     if (setMathInput) setMathInput.checked = (s.Math !== false);
+    if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
   } catch (err) {
     console.error('init: settings failed', err);
     applyTheme('dark');
     applyWrap(true);
+    currentPreviewFont = 'Cascadia Code';
+    if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
   }
   try {
     // Windows file-association launch ("Open with") passes the document on
