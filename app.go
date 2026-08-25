@@ -150,8 +150,16 @@ func (a *App) SetPreviewFont(font string) error {
 	if err != nil {
 		return err
 	}
-	a.settings.PreviewFont = name
-	return settings.Save(a.settings)
+	// Only adopt the new value once it is persisted; a failed save must
+	// leave the in-memory settings untouched so GetCSS/GetSettings stay
+	// consistent with the on-disk state.
+	next := a.settings
+	next.PreviewFont = name
+	if err := settings.Save(next); err != nil {
+		return err
+	}
+	a.settings = next
+	return nil
 }
 
 // SetTitle updates the window title and the custom title bar text.

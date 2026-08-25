@@ -12,6 +12,7 @@ import {
   ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
+import { createFontCommitter } from './fontCommit';
 
 // ---------------------------------------------------------------- helpers
 
@@ -409,19 +410,26 @@ function applyPreviewFont(font: string) {
   void refreshPreview();
 }
 
-async function commitPreviewFont(raw: string) {
-  if (!setPreviewFontInput) return;
-  const value = raw.trim();
-  try {
-    await SetPreviewFont(value);
+// Serialized font commits: only one SetPreviewFont request is in flight at a
+// time and responses of superseded requests are dropped, so fast consecutive
+// edits can never leave the persisted value, currentPreviewFont and the input
+// out of sync. See TestTask: frontend/tests/fontCommit.test.ts.
+const fontCommitter = createFontCommitter({
+  save: (value) => SetPreviewFont(value),
+  apply: (value) => {
     applyPreviewFont(value);
-  } catch (err) {
-    console.error('SetPreviewFont failed', err);
-  } finally {
-    // Restore the input to the last validated font on failure; on success
-    // this is a no-op with the normalized value.
-    setPreviewFontInput.value = currentPreviewFont;
-  }
+    if (setPreviewFontInput) setPreviewFontInput.value = value;
+  },
+  fail: (err) => console.error('SetPreviewFont failed', err),
+  restore: (value) => {
+    if (setPreviewFontInput) setPreviewFontInput.value = value;
+  },
+  valid: () => currentPreviewFont,
+});
+
+function commitPreviewFont(raw: string) {
+  if (!setPreviewFontInput) return;
+  fontCommitter.commit(raw);
 }
 
 function syncSettingsModalUI() {

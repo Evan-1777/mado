@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"mado/internal/settings"
 )
 
 func TestMigrateLegacyStore(t *testing.T) {
@@ -80,4 +82,31 @@ func TestMigrateLegacyStore(t *testing.T) {
 			t.Fatalf("dst was overwritten: got %q, want %q", string(got), dstContent)
 		}
 	})
+}
+
+// TestSetPreviewFontSaveFailureKeepsState verifies that a failed settings.Save
+// does not mutate the in-memory settings: GetCSS/GetSettings must stay
+// consistent with what is actually persisted.
+func TestSetPreviewFontSaveFailureKeepsState(t *testing.T) {
+	// Force Save to fail by occupying the store path with a directory.
+	// ReadFile on it errors (ignored by Save), so WriteFile must fail too.
+	path, err := settings.Path()
+	if err != nil {
+		t.Fatalf("settings.Path: %v", err)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatalf("remove existing store: %v", err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("mkdir store path: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(path) })
+
+	a := &App{settings: settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"}}
+	if err := a.SetPreviewFont("JetBrains Mono"); err == nil {
+		t.Fatalf("SetPreviewFont should fail when the store is not writable")
+	}
+	if a.settings.PreviewFont != "Fira Code" {
+		t.Fatalf("failed save mutated in-memory font: got %q, want %q", a.settings.PreviewFont, "Fira Code")
+	}
 }

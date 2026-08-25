@@ -44,7 +44,7 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `node frontend/tests/fontCommit.test.ts`（Node 原生 type-stripping，无测试框架）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
 
 ## 3. 目录结构与模块职责
 
@@ -58,7 +58,7 @@ internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共�
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
+frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
@@ -75,7 +75,7 @@ docs/                    # 用户文档
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；`startup` 自动检查旧配置目录执行一次性迁移
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
-  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体变更成功才更新 `currentPreviewFont` 并失效 `previewCss` 缓存触发刷新；失败回填上一次有效值
+  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：`SetPreviewFont` 在 Go 侧先写副本、`settings.Save` 成功后才赋回 `a.settings`（保存失败不改内存），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
