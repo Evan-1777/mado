@@ -43,6 +43,10 @@ func NewMathInline(content []byte) *MathInline {
 type MathBlock struct {
 	ast.BaseBlock
 	Content []byte
+	// start is the byte offset of the opening `$$` line in the source,
+	// recorded by the parser because goldmark keeps no position for custom
+	// blocks; srcline.go turns it into a data-line attribute.
+	start int
 }
 
 func (n *MathBlock) Dump(source []byte, level int) {
@@ -160,7 +164,7 @@ func (b *mathBlockParser) CanAcceptIndentedLine() bool {
 }
 
 func (b *mathBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
-	line, _ := reader.PeekLine()
+	line, seg := reader.PeekLine()
 	pos := 0
 	for pos < len(line) && (line[pos] == ' ' || line[pos] == '\t') {
 		pos++
@@ -174,6 +178,7 @@ func (b *mathBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 	}
 
 	node := NewMathBlock()
+	node.start = seg.Start
 	trimmedRight := bytes.TrimRight(rest[2:], " \t\r\n")
 
 	// Single-line block: `$$\frac{a}{b}$$` (with optional leading/trailing spaces)
@@ -274,6 +279,10 @@ func (r *mathHTMLRenderer) renderMathBlock(w util.BufWriter, source []byte, n as
 	escaped := html.EscapeString(string(b.Content))
 	_, _ = w.WriteString(`<div class="math-block" data-tex="`)
 	_, _ = w.WriteString(escaped)
+	if line, ok := n.AttributeString("data-line"); ok {
+		_, _ = w.WriteString(`" data-line="`)
+		_, _ = w.Write(line.([]byte))
+	}
 	_, _ = w.WriteString(`">`)
 	_, _ = w.WriteString(escaped)
 	_, _ = w.WriteString("</div>\n")

@@ -196,3 +196,47 @@ kbd {
 ::selection {
   background: var(--accent-soft);
 }
+
+/* Source-line gutter.
+   The numbers come from the data-line attribute mdrender writes on every
+   top-level block; there is no JS measuring or scroll syncing here, so the
+   gutter survives reflow, wrapping and window resizing for free. The rules
+   live in the preview stylesheet rather than the app one because the numbers
+   are painted inside the iframe document. */
+#md-content > [data-line] {
+  position: relative;
+}
+
+body.md-gutter #md-content > [data-line]::before {
+  content: attr(data-line);
+  position: absolute;
+  top: 0;
+  right: 100%;
+  margin-right: 0.6rem;
+  /* 1.6rem ≈ the body's first-line box height (14.5px × 1.75), so the
+     number's centre lines up with the centre of the block's first line. */
+  font-size: 0.78rem;
+  line-height: 1.6rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  opacity: 0.45;
+  user-select: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+/* Blocks with a top padding need the number pushed down to their first line
+   of text. md-line is mdrender's own fence wrapper: margin collapsing keeps
+   its border box flush with the <pre> inside, so it needs the pre's padding. */
+body.md-gutter div.md-line[data-line]::before {
+  margin-top: 0.9rem;
+}
+
+body.md-gutter blockquote[data-line]::before {
+  margin-top: 0.15rem;
+}
+
+body.md-gutter #md-content > [data-line]:hover::before {
+  opacity: 1;
+  color: var(--accent);
+}

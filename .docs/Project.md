@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.5：公式渲染、设置页与偏好持久化便携化、Preview 可配置字体完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.6：Split 双栏源行号栏与双向跳转完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -44,7 +44,7 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（即 `node tests/fontCommit.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts` 与 `tests/gutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入
 
 ## 3. 目录结构与模块职责
 
@@ -55,10 +55,10 @@ main_test.go             # 根包测试：旧存储迁移测试
 app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
 internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共享 exe 目录下 settings.json）
-internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）
+internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）+ 源行号锚点（srcline.go）
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
+frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
@@ -77,7 +77,9 @@ docs/                    # 用户文档
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
+  - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
+  - 编辑器与模式：CodeMirror 扩展含 `lineNumbers()` + `codeFolding()`（无折叠箭头，折叠仅键盘 `foldKeymap`）——行号栏专用于跳转，不与折叠手势冲突；工具栏模式按钮顺序 Preview / Editor / Split，启动默认 Preview（`pane` 初始类 `pane preview-only`，与默认选中项一致）
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
@@ -123,6 +125,13 @@ docs/                    # 用户文档
 - 「Preview 字体名注入 CSS 前必须经过 settings.NormalizePreviewFont + theme.cssFontDecl 双重防线——原因：字体名会进入 CSS 变量声明，控制字符/引号/反斜杠/分号/注释符等可逃逸字符串上下文；校验失败时前端回填上一次有效值，不改变后端状态（2026-08-24）。★ 两道防线职责不同：settings 层是唯一拒绝点（返回 error），theme 层无错误路径、只做中和（转义 `\` 与 `"`、丢弃 NUL/CR/LF/FF）——CSS 字符串不允许裸换行，保留它会让该声明退化并使其后内容重新按规则解析」
 - 「`--preview-font` 回退栈以 `sans-serif, monospace` 收尾——原因：code/kbd 与正文共用该变量，首选字体缺失时若只以 `sans-serif` 收尾，行内代码会退到比例字体；正文始终先命中 `sans-serif` 通用族，不会落到 `monospace`」
 - 「偏好保存失败场景的测试用 `App.saveSettings` 函数字段注入，不得用目录占位 `settings.Path()` 的方式——原因：main 包无法覆写 settings 包未导出的 `storePath`，占位法作用于 `os.Executable()` 同目录；`go test` 下该目录是 `/tmp/go-build*` 侥幸安全，但 `go test -c` 产出的二进制从含 settings.json 的目录运行会直接删除真实配置」
+- 「源行号锚点只覆盖 Document 的直接子块，缩进代码块与原始 HTML 块无锚点——原因：goldmark 这两类渲染器忽略节点属性；表现是该块处不显示行号，跳转回退到最近的前序锚点（已知限制）」
+- 「跳转粒度是渲染块而非单行——原因：行号只标在顶层块上，多行块内部的行只能把整块置顶（映射粒度固有限制）」
+- 「★ 编辑器行号槽的事件必须监听 `cm.scrollDOM`，不能用 `EditorView.domEventHandlers`——原因：后者只挂 `contentDOM`，而 `.cm-gutters` 是它的兄弟节点，行号槽的 mousedown 到不了那里（判定顺序：button≠0 先返回 → x 落在 `.cm-gutters` 矩形外返回 → `posAtCoords` 为 null 返回）」
+- 「围栏代码块的 `data-line` 落在包装层 `<div class="md-line">` 上而非 `<pre>`；★ 禁止改用 `chromahtml.PreventSurroundingPre(true)` 自写 `<pre>`——原因：Chroma 的 `<pre>` 开标签不受我们控制，包装层是唯一注入点；而该开关会连带删除行包装 span `<span class="line"><span class="cl">` 并使 `hl_lines`/`linenos` 渲染路径整体失效，Chroma 输出无法保持零变化」
+- 「变换器标注围栏块前必须合并 info 串 `{...}` 属性——原因：goldmark-highlighting 的 `getAttributes` 在节点已有属性时完全跳过 info 串解析，先写 `data-line` 会静默丢弃 `{nohl=true}`/`{style=...}`；合并用 goldmark 导出的 `parser.ParseAttributes`，并与上游一致地要求 `{` 下标 > 0」
+- 「★ 启用 `highlighting.WithWrapperRenderer` 后，未被 Chroma 高亮的围栏块（无词法分析器或 `{nohl=true}`）的 `<pre><code>` 由包装渲染器补齐，否则代码行会以裸文本直出——原因：上游 `renderFencedCodeBlock` 只在 `WrapperRenderer == nil` 时才写 `<pre><code`，高亮分支由 Chroma 自带 preWrapper 输出；包装渲染器须在 `!entering` 时补 `</code></pre>`」
+- 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
 ## 7. 外部依赖与集成
@@ -132,6 +141,11 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-29 源行号锚点由 Go 渲染期写入顶层块元素（`data-line`）而非前端解析渲染结果或 Go 另出行号数组——理由：渲染 HTML 无法反推源码行；前端正则会被 raw HTML 破坏顺序，而按序号对齐 DOM 的数组会因「链接定义不产元素、HTML 块可能产多元素」必然错位；goldmark 对 `data-` 前缀属性无条件放行，写入成本仅一个 ASTTransformer
+- 2026-08-29 预览行号栏用 CSS `content: attr(data-line)` + 绝对定位，而非父窗口行号列 + JS 测高 + scroll 同步——理由：零 JS 定位，行号随重排/换行/缩放自动跟随，天然随文档滚动；后者需逐块 `getComputedStyle`、每次渲染重建 DOM，且滚动同步易抖动
+- 2026-08-29 围栏代码块用包装层 div 承载行号，而非 `PreventSurroundingPre(true)` 自写 `<pre>`——理由：包装层下 Chroma 输出保持零变化（行包装 span 与 `<pre>` 开标签逐字保留），后者会连带删除行包装 span 并让 `hl_lines`/`linenos` 渲染路径失效
+- 2026-08-29 行号跳转只滚动，不改光标/选区/焦点——理由：避免在编辑中途丢失光标位置；CodeMirror 的 mousedown 处理器只挂在 contentDOM，行号槽点击本就不会触发选区
+- 2026-08-29 启动默认模式改为 Preview，工具栏顺序 Preview / Editor / Split——理由：顺序首位即默认，启动先落阅读态
 - 2026-08-29 偏好写入统一收敛到 `App.persist`（副本 mutate → 保存成功才赋回，窗口主题 chrome 亦在保存成功后切换），失败注入改用 `App.saveSettings` 函数字段而非目录占位——理由：四个 setter 此前语义不一致（SetPreviewFont 保存成功才改内存，其余先改内存再保存），保存失败会内存/磁盘分流；函数字段注入无需为测试扩大 settings 包公开 API，也避免删除 exe 目录下真实 settings.json 的破坏性用例
 - 2026-08-19 标题栏设置图标规范为 Lucide 风格矢量 SVG——理由：统一 1.8 描边比例与标准对称齿轮，匹配 Windows 11 原生标题栏视觉风格
 - 2026-08-19 LaTeX 公式块解析采用 ContextKey 状态追踪与尾随空白剥离——理由：杜绝单行公式解析穿透吞没后续 Markdown 标题与段落
@@ -165,3 +179,5 @@ docs/                    # 用户文档
 - **欢迎文档** = 首次启动时自动写入 `%APPDATA%/Mado/welcome.md` 的默认演示文档
 - **预览通道** = 编辑区 → mdrender → iframe 内原地更新（style + article，首帧 srcdoc 引导）+ 父侧链接拦截（锚点滚动/导航阻断）的渲染链路
 - **公式通道** = Go 侧 math 扩展解析定界符输出带 `data-tex` 占位元素 → 前端父上下文 KaTeX `renderToString` 渲染 → 写入预览帧 DOM 的渲染管线
+- **源行号锚点** = Go 渲染期写入顶层块元素的 `data-line`，值为该块在 Markdown 源码中的起始行号（1 起算）；预览侧由 CSS 生成行号栏，两侧点击互跳时作为共同坐标
+- **行号栏（gutter）** = 编辑区 CodeMirror 行号槽与预览区由 `data-line` 生成的数字列，点击后把目标行在对方栏置顶

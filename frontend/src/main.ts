@@ -4,7 +4,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
-import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language';
+import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatching, codeFolding, foldKeymap } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
@@ -13,6 +13,7 @@ import {
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
+import { pickBlockIndex } from './gutter';
 
 // ---------------------------------------------------------------- helpers
 
@@ -109,15 +110,16 @@ const toolbar = document.createElement('div');
 toolbar.className = 'toolbar';
 toolbar.innerHTML = `
   <div class="seg" role="tablist">
-    <button class="active" data-mode="split" role="tab">Split</button>
+    <button class="active" data-mode="preview" role="tab">Preview</button>
     <button data-mode="editor" role="tab">Editor</button>
-    <button data-mode="preview" role="tab">Preview</button>
+    <button data-mode="split" role="tab">Split</button>
   </div>
   <div class="status"><span class="dot"></span><span id="status-text">Ready</span></div>
 `;
 
 const pane = document.createElement('main');
-pane.className = 'pane';
+// Starts in Preview (the first toolbar tab is the default mode).
+pane.className = 'pane preview-only';
 pane.innerHTML = `
   <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="Document outline">
     <div class="toc-header">
@@ -224,6 +226,19 @@ function flattenToc(nodes: TocNode[]): TocNode[] {
 
 function getAllParentNodes(nodes: TocNode[]): TocNode[] {
   return flattenToc(nodes).filter((n) => n.children.length > 0);
+}
+
+// ---------------------------------------------------------------- line gutter
+
+// The gutter numbers live inside the preview iframe, so visibility is a class
+// on the frame's <body>: the preview column is visible in Split and in
+// Preview-only mode, and Editor-only has no preview to show.
+function isPreviewVisible(): boolean {
+  return !pane.classList.contains('editor-only');
+}
+
+function syncGutterVisibility(): void {
+  previewIframe.contentDocument?.body.classList.toggle('md-gutter', isPreviewVisible());
 }
 
 function isTocSidebarVisible(): boolean {
@@ -502,7 +517,9 @@ const editorState = EditorState.create({
     crosshairCursor(),
     bracketMatching(),
     indentOnInput(),
-    foldGutter(),
+    // The line-number gutter is reserved for jumping to the matching preview
+    // line, so folding is state-only (keyboard) with no clickable arrows.
+    codeFolding(),
     syntaxHighlighting(defaultHighlightStyle),
     markdown(),
     history(),
@@ -617,6 +634,7 @@ function writePreview(html: string) {
     // First render, or the frame was reset underneath us: rebuild the
     // skeleton. srcdoc bootstrap keeps the sandboxed same-origin model.
     previewIframe.srcdoc = doc();
+    syncGutterVisibility();
     return;
   }
   try {
@@ -627,6 +645,7 @@ function writePreview(html: string) {
     // Cross-origin / unexpected frame state: fall back to a full rebuild.
     previewIframe.srcdoc = doc();
   }
+  syncGutterVisibility();
 }
 
 // ---------------------------------------------------------------- window resize controller
@@ -694,6 +713,39 @@ function setupResizeController() {
 
 // ---------------------------------------------------------------- preview links
 
+// Blocks the preview gutter can jump to, top to bottom.
+function previewBlocks(): { el: Element; line: number }[] {
+  const doc = previewIframe.contentDocument;
+  const article = doc?.getElementById('md-content');
+  if (!article) return [];
+  const out: { el: Element; line: number }[] = [];
+  for (const el of Array.from(article.querySelectorAll(':scope > [data-line]'))) {
+    const line = Number(el.getAttribute('data-line'));
+    if (Number.isFinite(line)) out.push({ el, line });
+  }
+  return out;
+}
+
+// Put `line` at the top of the editor viewport. CodeMirror has no smooth
+// scrolling API and estimates the height of off-screen lines, so a hand-rolled
+// scrollTop would land off; scrollIntoView re-measures after the scroll.
+// Focus and selection are left alone: jumping must not disturb the caret.
+function scrollEditorToLine(line: number): void {
+  const n = Math.min(Math.max(line, 1), cm.state.doc.lines);
+  cm.dispatch({
+    effects: EditorView.scrollIntoView(cm.state.doc.line(n).from, { y: 'start' }),
+  });
+}
+
+// Put the block containing `line` at the top of the preview viewport.
+function scrollPreviewToLine(line: number): void {
+  const blocks = previewBlocks();
+  if (blocks.length === 0) return;
+  const i = pickBlockIndex(blocks.map((b) => b.line), line);
+  if (i < 0) return;
+  blocks[i].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // Anchor links inside the preview (e.g. a TOC entry pointing to "#section")
 // must not use the default navigation: Chromium treats about:srcdoc#section
 // as a new iframe navigation and replaces the in-place document with an empty
@@ -704,6 +756,29 @@ function hookPreviewLinks() {
   const doc = previewIframe.contentDocument;
   if (!doc) return;
   doc.addEventListener('click', (e) => {
+    // The gutter numbers are painted on top of the body's left padding, so
+    // the content column's left edge is where the clickable strip ends.
+    const article = doc.getElementById('md-content') ?? doc.body;
+    // Click to the left of the text column means "in the gutter". Hit-testing
+    // coordinates rather than the ::before pseudo-element keeps this stable,
+    // since pseudo-element hit behaviour varies between engine versions.
+    if (e.clientX < article.getBoundingClientRect().left) {
+      const blocks = previewBlocks();
+      if (blocks.length > 0) {
+        // Scanning beats a binary search here: the blocks are already laid
+        // out, so the first one below the pointer is the answer.
+        let hit = blocks[blocks.length - 1];
+        for (const b of blocks) {
+          if (b.el.getBoundingClientRect().bottom > e.clientY) {
+            hit = b;
+            break;
+          }
+        }
+        e.preventDefault();
+        scrollEditorToLine(hit.line);
+        return;
+      }
+    }
     // No `instanceof Element` here: the event realm is the frame's, not the
     // parent's, so cross-realm checks would fail. Click targets are elements.
     const a = (e.target as Element | null)?.closest?.('a');
@@ -732,6 +807,26 @@ function hookPreviewLinks() {
 previewIframe.addEventListener('load', () => {
   hookPreviewLinks();
   renderMathInFrame(previewIframe.contentDocument);
+  syncGutterVisibility();
+});
+
+// Gutter clicks in the editor. This has to bind to scrollDOM, not to
+// EditorView.domEventHandlers: the latter installs its handlers on contentDOM,
+// and .cm-gutters is a *sibling* of contentDOM, so gutter events never reach
+// them. No mode gate: in single-column mode the other column is hidden, the
+// jump simply has no visible effect — gating it would instead make the gutter
+// look broken in Preview-only mode, where it is visible and the editor is not.
+cm.scrollDOM.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const gutters = cm.dom.querySelector('.cm-gutters');
+  if (!gutters) return;
+  const box = gutters.getBoundingClientRect();
+  if (e.clientX < box.left || e.clientX > box.right) return;
+  // posAtCoords locates the line by y first, so a click in the gutter still
+  // resolves to the line the pointer is over.
+  const pos = cm.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+  if (pos === null) return;
+  scrollPreviewToLine(cm.state.doc.lineAt(pos).number);
 });
 
 // ---------------------------------------------------------------- file ops
@@ -1012,6 +1107,7 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
     pane.classList.remove('editor-only', 'preview-only');
     if (mode === 'editor') pane.classList.add('editor-only');
     if (mode === 'preview') pane.classList.add('preview-only');
+    syncGutterVisibility();
     if (isTocSidebarVisible() && tocDirty) {
       renderToc();
     }

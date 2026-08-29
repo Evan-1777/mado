@@ -35,7 +35,7 @@ func TestRenderTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !contains(out, "<table>") {
+	if !contains(out, "<table") {
 		t.Fatalf("table: output missing <table>: %q", out)
 	}
 }
@@ -164,7 +164,7 @@ func TestRenderMathBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if want := `<div class="math-block" data-tex="\frac{a}{b}">\frac{a}{b}</div>`; !contains(out, want) {
+	if want := `<div class="math-block" data-tex="\frac{a}{b}" data-line="1">\frac{a}{b}</div>`; !contains(out, want) {
 		t.Fatalf("math block singleline: output %q missing %q", out, want)
 	}
 
@@ -173,7 +173,7 @@ func TestRenderMathBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render multi: %v", err)
 	}
-	if want := `<div class="math-block" data-tex="\frac{a}{b}">\frac{a}{b}</div>`; !contains(outMulti, want) {
+	if want := `<div class="math-block" data-tex="\frac{a}{b}" data-line="1">\frac{a}{b}</div>`; !contains(outMulti, want) {
 		t.Fatalf("math block multiline: output %q missing %q", outMulti, want)
 	}
 }
@@ -274,21 +274,21 @@ func TestRenderMathSingleLineTrailingSpacesAndMarkdownStructure(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 
-	wantBlock := `<div class="math-block" data-tex="\text{货币总量} = \frac{100 \text{ 万元}}{10\%} = 1000 \quad \text{万元}">`
+	wantBlock := `<div class="math-block" data-tex="\text{货币总量} = \frac{100 \text{ 万元}}{10\%} = 1000 \quad \text{万元}" data-line="1">`
 	if !contains(out, wantBlock) {
 		t.Errorf("math block missing %q in %q", wantBlock, out)
 	}
 
-	wantParagraph := "<p>整个过程除了最开始的基础货币之外，更多就是<strong>记账</strong>。</p>"
+	wantParagraph := `<p data-line="3">整个过程除了最开始的基础货币之外，更多就是<strong>记账</strong>。</p>`
 	if !contains(out, wantParagraph) {
 		t.Errorf("paragraph missing %q in %q", wantParagraph, out)
 	}
 
-	if !contains(out, "<hr>") {
+	if !contains(out, "<hr") {
 		t.Errorf("hr divider missing in %q", out)
 	}
 
-	wantHeading := `<h2 id="第二部分核心概念土地金融">第二部分：核心概念——“土地金融”</h2>`
+	wantHeading := `<h2 id="第二部分核心概念土地金融" data-line="7">第二部分：核心概念——“土地金融”</h2>`
 	if !contains(out, wantHeading) {
 		t.Errorf("heading missing %q in %q", wantHeading, out)
 	}

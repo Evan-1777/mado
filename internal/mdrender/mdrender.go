@@ -18,7 +18,70 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/util"
 )
+
+// renderCodeWrapper wraps every fenced code block in a
+// `<div class="md-line" data-line="N">` so the preview gutter can show the
+// block's source line.
+//
+// The attribute has to live on the wrapper: Chroma owns the `<pre>` open tag
+// and we do not control it. The tempting alternative — writing our own `<pre>`
+// and asking Chroma for PreventSurroundingPre(true) — is worse than it looks:
+// that flag also sets formatter.preventSurroundingPre, which drops the
+// per-line `<span class="line"><span class="cl">` wrappers and disables the
+// hl_lines/linenos rendering paths entirely. A wrapper div costs one element
+// and leaves Chroma byte-for-byte untouched.
+func renderCodeWrapper(w util.BufWriter, c highlighting.CodeBlockContext, entering bool) {
+	if !entering {
+		if plainLang != nil {
+			_, _ = w.WriteString("</code></pre>")
+		}
+		_, _ = w.WriteString("</div>\n")
+		return
+	}
+	_, _ = w.WriteString(`<div class="md-line"`)
+	if line, ok := dataLine(c.Attributes()); ok {
+		_, _ = w.WriteString(` data-line="`)
+		_, _ = w.WriteString(line)
+		_, _ = w.WriteString(`"`)
+	}
+	_ = w.WriteByte('>')
+	// Blocks Chroma does not highlight (no lexer, or nohl=true) reach us with
+	// the code lines written straight through, so we owe them the <pre> that
+	// Chroma's own formatter would have emitted. Highlighted blocks already
+	// carry their own <pre class="chroma">.
+	plainLang = nil
+	if !c.Highlighted() {
+		if lang, ok := c.Language(); ok {
+			plainLang = lang
+			_, _ = w.WriteString(`<pre><code class="language-`)
+			_, _ = w.Write(lang)
+			_, _ = w.WriteString(`">`)
+		} else {
+			_, _ = w.WriteString("<pre><code>")
+			plainLang = []byte{}
+		}
+	}
+}
+
+// plainLang holds the language of the code block currently being wrapped, or
+// nil when Chroma emitted its own <pre>. Rendering is single-threaded and
+// strictly nested, so one variable is enough to match up the closing tag.
+var plainLang []byte
+
+// dataLine reads the source line stamped by srclineTransformer.
+func dataLine(attr highlighting.ImmutableAttributes) (string, bool) {
+	if attr == nil {
+		return "", false
+	}
+	v, ok := attr.Get(dataLineAttr)
+	if !ok {
+		return "", false
+	}
+	line, ok := v.([]byte)
+	return string(line), ok
+}
 
 // scriptRe matches <script ...> and </script> tags (case-insensitive,
 // attributes optional, no nesting in HTML). Used to strip executable JS
@@ -35,6 +98,7 @@ func Render(md string, math bool) (string, error) {
 			highlighting.WithFormatOptions(
 				chromahtml.WithClasses(true),
 			),
+			highlighting.WithWrapperRenderer(renderCodeWrapper),
 		),
 	}
 	if math {
@@ -45,6 +109,10 @@ func Render(md string, math bool) (string, error) {
 		goldmark.WithExtensions(exts...),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
+			// Priority 1000 keeps us behind GFM's table transformers (0 and
+			// 200): PrioritizedSlice sorts ascending, so a bigger number runs
+			// later and sees the finished AST.
+			parser.WithASTTransformers(util.Prioritized(&srclineTransformer{}, 1000)),
 		),
 		goldmark.WithRendererOptions(
 			html.WithUnsafe(),
