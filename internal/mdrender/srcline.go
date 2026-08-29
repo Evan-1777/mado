@@ -42,7 +42,7 @@ func (t *srclineTransformer) Transform(node *ast.Document, reader text.Reader, _
 		if line, ok := markLine(src, n, cursor); ok {
 			n.SetAttribute(dataLineAttr, []byte(strconv.Itoa(line)))
 		}
-		if end := blockEnd(src, n); end > cursor {
+		if end := blockEnd(n); end > cursor {
 			cursor = nextBlockStart(src, end)
 		}
 	}
@@ -69,9 +69,6 @@ func markLine(src []byte, n ast.Node, cursor int) (int, bool) {
 	off := blockOffset(src, n)
 	if off < cursor {
 		off = cursor
-	}
-	if len(src) == 0 {
-		return 1, true
 	}
 	if off > len(src) {
 		return 0, false
@@ -105,7 +102,7 @@ func mergeInfoAttrs(src []byte, n *ast.FencedCodeBlock) {
 
 // blockEnd returns the byte offset right past the last source byte n covers,
 // or -1 when the block carries no source position.
-func blockEnd(src []byte, n ast.Node) int {
+func blockEnd(n ast.Node) int {
 	if lines := n.Lines(); lines.Len() > 0 {
 		return lines.At(lines.Len() - 1).Stop
 	}
@@ -114,7 +111,7 @@ func blockEnd(src []byte, n ast.Node) int {
 	}
 	end := -1
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if e := blockEnd(src, c); e > end {
+		if e := blockEnd(c); e > end {
 			end = e
 		}
 	}

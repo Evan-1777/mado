@@ -130,7 +130,7 @@ docs/                    # 用户文档
 - 「★ 编辑器行号槽的事件必须监听 `cm.scrollDOM`，不能用 `EditorView.domEventHandlers`——原因：后者只挂 `contentDOM`，而 `.cm-gutters` 是它的兄弟节点，行号槽的 mousedown 到不了那里（判定顺序：button≠0 先返回 → x 落在 `.cm-gutters` 矩形外返回 → `posAtCoords` 为 null 返回）」
 - 「围栏代码块的 `data-line` 落在包装层 `<div class="md-line">` 上而非 `<pre>`；★ 禁止改用 `chromahtml.PreventSurroundingPre(true)` 自写 `<pre>`——原因：Chroma 的 `<pre>` 开标签不受我们控制，包装层是唯一注入点；而该开关会连带删除行包装 span `<span class="line"><span class="cl">` 并使 `hl_lines`/`linenos` 渲染路径整体失效，Chroma 输出无法保持零变化」
 - 「变换器标注围栏块前必须合并 info 串 `{...}` 属性——原因：goldmark-highlighting 的 `getAttributes` 在节点已有属性时完全跳过 info 串解析，先写 `data-line` 会静默丢弃 `{nohl=true}`/`{style=...}`；合并用 goldmark 导出的 `parser.ParseAttributes`，并与上游一致地要求 `{` 下标 > 0」
-- 「★ 启用 `highlighting.WithWrapperRenderer` 后，未被 Chroma 高亮的围栏块（无词法分析器或 `{nohl=true}`）的 `<pre><code>` 由包装渲染器补齐，否则代码行会以裸文本直出——原因：上游 `renderFencedCodeBlock` 只在 `WrapperRenderer == nil` 时才写 `<pre><code`，高亮分支由 Chroma 自带 preWrapper 输出；包装渲染器须在 `!entering` 时补 `</code></pre>`」
+- 「★ 启用 `highlighting.WithWrapperRenderer` 后，未被 Chroma 高亮的围栏块（无词法分析器或 `{nohl=true}`）的 `<pre><code>` 由包装渲染器补齐，否则代码行会以裸文本直出——原因：上游 `renderFencedCodeBlock` 只在 `WrapperRenderer == nil` 时才写 `<pre><code`，高亮分支由 Chroma 自带 preWrapper 输出；包装渲染器须自行补齐（进出两次调用收到同一个 `CodeBlockContext` 实例，退出时用 `!c.Highlighted()` 判定即可，不要用包级状态记录当前块）」
 - 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 

@@ -742,7 +742,6 @@ function scrollPreviewToLine(line: number): void {
   const blocks = previewBlocks();
   if (blocks.length === 0) return;
   const i = pickBlockIndex(blocks.map((b) => b.line), line);
-  if (i < 0) return;
   blocks[i].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

@@ -34,7 +34,9 @@ import (
 // and leaves Chroma byte-for-byte untouched.
 func renderCodeWrapper(w util.BufWriter, c highlighting.CodeBlockContext, entering bool) {
 	if !entering {
-		if plainLang != nil {
+		// Same context instance as the entering call, so this mirrors the
+		// opening tag exactly — no state to carry between the two.
+		if !c.Highlighted() {
 			_, _ = w.WriteString("</code></pre>")
 		}
 		_, _ = w.WriteString("</div>\n")
@@ -51,24 +53,16 @@ func renderCodeWrapper(w util.BufWriter, c highlighting.CodeBlockContext, enteri
 	// the code lines written straight through, so we owe them the <pre> that
 	// Chroma's own formatter would have emitted. Highlighted blocks already
 	// carry their own <pre class="chroma">.
-	plainLang = nil
 	if !c.Highlighted() {
+		_, _ = w.WriteString("<pre><code")
 		if lang, ok := c.Language(); ok {
-			plainLang = lang
-			_, _ = w.WriteString(`<pre><code class="language-`)
+			_, _ = w.WriteString(` class="language-`)
 			_, _ = w.Write(lang)
-			_, _ = w.WriteString(`">`)
-		} else {
-			_, _ = w.WriteString("<pre><code>")
-			plainLang = []byte{}
+			_, _ = w.WriteString(`"`)
 		}
+		_, _ = w.WriteString(">")
 	}
 }
-
-// plainLang holds the language of the code block currently being wrapped, or
-// nil when Chroma emitted its own <pre>. Rendering is single-threaded and
-// strictly nested, so one variable is enough to match up the closing tag.
-var plainLang []byte
 
 // dataLine reads the source line stamped by srclineTransformer.
 func dataLine(attr highlighting.ImmutableAttributes) (string, bool) {
