@@ -8,7 +8,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetWelcome, GetCSS, GetSettings, SetTheme, SetDirty,
+  LoadFile, SaveFile, Render, GetCSS, GetSettings, SetTheme, SetDirty,
   ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
@@ -1151,20 +1151,25 @@ async function init() {
   }
   try {
     // Windows file-association launch ("Open with") passes the document on
-    // the command line; prefer it over the last-opened file.
+    // the command line. Without one, start on a blank untitled document.
     let path = '';
     try {
       path = await GetStartupFile();
     } catch {
       path = '';
     }
-    if (!path) path = await GetWelcome();
-    const content = await LoadFile(path);
-    await loadContent(path, content);
+    if (path) {
+      const content = await LoadFile(path);
+      await loadContent(path, content);
+    } else {
+      await newFile();
+    }
   } catch (err) {
-    console.error('init: welcome failed', err);
-    setTitle('untitled');
-    statusEl.textContent = 'Ready';
+    console.error('init: open failed', err);
+    // Fall back to a blank document; newFile() resets the status bar to
+    // Ready, so the failure notice has to be written after it.
+    await newFile();
+    statusEl.textContent = 'Open failed';
   }
   cm.focus();
 }

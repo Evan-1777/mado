@@ -31,17 +31,6 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	}
 }
 
-// setUserConfigDir points os.UserConfigDir at a per-test directory on every
-// platform: Windows reads %AppData%, Linux reads XDG_CONFIG_HOME — both are
-// set so the override works wherever the suite runs.
-func setUserConfigDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("APPDATA", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	return dir
-}
-
 func withTempStore(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -56,46 +45,25 @@ func withTempStore(t *testing.T) string {
 	return p
 }
 
-// TestLastFilePersistence verifies SetLastFile/GetLastFile survive across calls.
-func TestLastFilePersistence(t *testing.T) {
-	withTempStore(t)
-	setUserConfigDir(t)
+// TestSetLastFileCreatesStore verifies SetLastFile creates the store file when
+// it does not exist yet.
+func TestSetLastFileCreatesStore(t *testing.T) {
+	p := withTempStore(t)
 
-	path := filepath.Join(t.TempDir(), "note.md")
-	if err := SetLastFile(path); err != nil {
-		t.Fatalf("set: %v", err)
+	if err := SetLastFile("/a.md"); err != nil {
+		t.Fatalf("SetLastFile: %v", err)
 	}
-	got, err := GetLastFile()
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if got != path {
-		t.Fatalf("got %q want %q", got, path)
-	}
-}
 
-// TestGetLastFileFirstRun verifies first launch (no settings file) returns a
-// welcome document that is persisted to disk.
-func TestGetLastFileFirstRun(t *testing.T) {
-	withTempStore(t)
-	setUserConfigDir(t)
-
-	path, err := GetLastFile()
+	data, err := os.ReadFile(p)
 	if err != nil {
-		t.Fatalf("get welcome: %v", err)
+		t.Fatalf("read store: %v", err)
 	}
-	if path == "" {
-		t.Fatal("expected a welcome path")
+	var store map[string]any
+	if err := json.Unmarshal(data, &store); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("welcome file missing on disk: %v", err)
-	}
-	content, err := ReadFile(path)
-	if err != nil {
-		t.Fatalf("read welcome: %v", err)
-	}
-	if len(content) == 0 {
-		t.Fatal("welcome content empty")
+	if store["lastfile"] != "/a.md" {
+		t.Fatalf("lastfile = %v, want /a.md", store["lastfile"])
 	}
 }
 
@@ -132,30 +100,5 @@ func TestPreserveSettingsKeysOnSetLastFile(t *testing.T) {
 	}
 	if store["theme"] != "light" || store["wrap"] != false || store["math"] != true {
 		t.Fatalf("settings keys altered: %+v", store)
-	}
-}
-
-// TestGetLastFileWithMixedStore verifies GetLastFile correctly reads lastfile in presence of other keys.
-func TestGetLastFileWithMixedStore(t *testing.T) {
-	p := withTempStore(t)
-	initial := map[string]any{
-		"lastfile": "/b.md",
-		"wrap":     true,
-		"math":     false,
-	}
-	b, err := json.Marshal(initial)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if err := os.WriteFile(p, b, 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	got, err := GetLastFile()
-	if err != nil {
-		t.Fatalf("GetLastFile: %v", err)
-	}
-	if got != "/b.md" {
-		t.Fatalf("GetLastFile() = %q, want /b.md", got)
 	}
 }

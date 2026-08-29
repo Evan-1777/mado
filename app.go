@@ -58,7 +58,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	if dst, err := settings.Path(); err == nil {
 		if configDir, err := os.UserConfigDir(); err == nil {
-			src := filepath.Join(configDir, "Mado", "settings.json")
+			src := filepath.Join(configDir, settings.AppDir, "settings.json")
 			_ = migrateLegacyStore(src, dst)
 		}
 	}
@@ -98,12 +98,6 @@ func (a *App) SaveFile(path, content string) error {
 // Render converts Markdown source to safe HTML for the preview pane.
 func (a *App) Render(md string) (string, error) {
 	return mdrender.Render(md, a.settings.Math)
-}
-
-// GetWelcome returns the last-opened file path, creating the welcome document
-// on first launch.
-func (a *App) GetWelcome() (string, error) {
-	return filesys.GetLastFile()
 }
 
 // GetCSS returns the composed preview stylesheet for the active theme and

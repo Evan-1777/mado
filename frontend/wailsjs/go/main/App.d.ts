@@ -10,8 +10,6 @@ export function GetSettings():Promise<settings.Settings>;
 
 export function GetStartupFile():Promise<string>;
 
-export function GetWelcome():Promise<string>;
-
 export function LoadFile(arg1:string):Promise<string>;
 
 export function OnFileDrop(arg1:number,arg2:number,arg3:Array<string>):Promise<void>;

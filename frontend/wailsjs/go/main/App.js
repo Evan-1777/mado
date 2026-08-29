@@ -18,10 +18,6 @@ export function GetStartupFile() {
   return window['go']['main']['App']['GetStartupFile']();
 }
 
-export function GetWelcome() {
-  return window['go']['main']['App']['GetWelcome']();
-}
-
 export function LoadFile(arg1) {
   return window['go']['main']['App']['LoadFile'](arg1);
 }

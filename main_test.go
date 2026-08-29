@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,28 @@ import (
 
 	"mado/internal/settings"
 )
+
+// TestStartupCreatesNoWelcomeDoc verifies startup is read-only: it must not
+// create anything under the user config directory (no welcome document, no
+// state directory). os.UserConfigDir is isolated for the same cross-platform
+// reason as the filesys tests: Windows reads %AppData%, Linux reads
+// XDG_CONFIG_HOME.
+func TestStartupCreatesNoWelcomeDoc(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	NewApp().startup(context.Background())
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir: %v", err)
+	}
+	appDir := filepath.Join(configDir, settings.AppDir)
+	if _, err := os.Stat(appDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("startup wrote under the config dir: %s exists (stat err %v)", appDir, err)
+	}
+}
 
 func TestMigrateLegacyStore(t *testing.T) {
 	t.Run("src exists dst missing", func(t *testing.T) {

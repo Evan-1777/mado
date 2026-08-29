@@ -1,55 +1,14 @@
-// Package filesys handles file I/O and last-file persistence for Mado.
+// Package filesys handles file I/O and the write-only lastfile record for Mado.
 package filesys
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 )
 
-const (
-	// AppDir is the directory name used under %APPDATA% for all Mado state.
-	AppDir = "Mado"
-
-	// lastFileKey is the top-level JSON key shared with the settings package.
-	lastFileKey = "lastfile"
-
-	// WelcomeDoc is the default document shown on first launch.
-	WelcomeDoc = "# Welcome to Mado\n\n" +
-		"A lightweight native Markdown editor for Windows.\n\n" +
-		"## Quick tour\n\n" +
-		"- **Edit on the left** — the preview updates as you type.\n" +
-		"- **Press `Ctrl+S`** to save, `Ctrl+O` to open, `Ctrl+N` for a new file.\n" +
-		"- **Toggle theme** from the title bar, on the right.\n\n" +
-		"## It supports\n\n" +
-		"| Feature | Syntax |\n" +
-		"|---------|--------|\n" +
-		"| Bold | **text** |\n" +
-		"| Inline code | `code` |\n" +
-		"| Keyboard keys | Press <kbd>Ctrl</kbd> + <kbd>S</kbd> |\n" +
-		"| Task list | - [ ] todo / - [x] done |\n" +
-		"| Raw HTML | <div>custom blocks</div> |\n" +
-		"| Inline math | `$E = mc^2$` |\n\n" +
-		"### Math formulas\n\n" +
-		"Block formulas:\n\n" +
-		"$$\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\n" +
-		"Inline formulas like $\\frac{1}{2}$ are also supported.\n\n" +
-		"> Try editing this file — the preview updates live.\n"
-)
-
-// appDataDir returns the Mado state directory under %APPDATA%, creating it if needed.
-func appDataDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(base, AppDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+// lastFileKey is the top-level JSON key shared with the settings package.
+const lastFileKey = "lastfile"
 
 // defaultStorePath returns the settings.json path next to the executable.
 func defaultStorePath() (string, error) {
@@ -63,11 +22,6 @@ func defaultStorePath() (string, error) {
 
 // storePath is overridable in tests to isolate test binaries.
 var storePath = defaultStorePath
-
-// settingsPath returns the shared settings JSON path.
-func settingsPath() (string, error) {
-	return storePath()
-}
 
 // ReadFile returns the content of the file at path.
 func ReadFile(path string) (string, error) {
@@ -84,51 +38,11 @@ func WriteFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-// GetLastFile returns the persisted last-opened file path, or the welcome
-// document (persisted to disk so the preview has a real file) when no
-// record exists.
-func GetLastFile() (string, error) {
-	path, err := settingsPath()
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return persistWelcome()
-		}
-		return "", err
-	}
-	var store map[string]any
-	if err := json.Unmarshal(data, &store); err != nil {
-		return "", err
-	}
-	if last, ok := store[lastFileKey].(string); ok && last != "" {
-		return last, nil
-	}
-	return persistWelcome()
-}
-
-// persistWelcome writes the welcome document to disk and records it as the
-// last file, so the preview can render a real file on first launch.
-func persistWelcome() (string, error) {
-	dir, err := appDataDir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, "welcome.md")
-	if err := os.WriteFile(path, []byte(WelcomeDoc), 0o644); err != nil {
-		return "", err
-	}
-	if err := SetLastFile(path); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
 // SetLastFile persists the last-opened file path into the shared JSON store.
+// Nothing reads the record back today (startup no longer restores it); it is
+// kept as data for a future "restore last session" option.
 func SetLastFile(path string) error {
-	p, err := settingsPath()
+	p, err := storePath()
 	if err != nil {
 		return err
 	}

@@ -24,13 +24,13 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.6：Split 双栏源行号栏与双向跳转完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.7：无文件启动改为空白新文档、启动路径收敛完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
 
 - **运行平台**：Windows 10/11（目标平台，依赖系统 Edge WebView2 Runtime）；**开发环境**：Linux x86_64（2026-08-15 迁移）
-  - ★ 易错：路径含中文/空格须加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅保留欢迎文档 `welcome.md`
+  - ★ 易错：路径含中文/空格须加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅为旧配置的一次性迁移源目录，应用不再向其写入
 - **Shell**：bash
 - **版本管理**：git 仓库（main 分支，无分支策略）
 - **语言 / 运行时**：Go 1.27.0（本机实测，`~/.local/go` 用户级单版本，会话内 `export PATH=$HOME/.local/go/bin:$PATH`；CI 用 `1.25.x`，`go.mod` 声明 `1.25.0`）；Node.js 24 + npm 11（前端构建）
@@ -44,17 +44,17 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts` 与 `tests/gutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts` 与 `tests/gutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`
 
 ## 3. 目录结构与模块职责
 
 ```
 go.mod / go.sum          # Go 依赖（goldmark、wails v2、chroma 等）
 main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、拖放）
-main_test.go             # 根包测试：旧存储迁移测试
-app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetWelcome/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
+main_test.go             # 根包测试：旧存储迁移 + 启动副作用（不写用户配置目录）
+app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
-internal/filesys/        # 文件读写 + lastfile 持久化（与 settings 共享 exe 目录下 settings.json）
+internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；无读取方，见 §9）
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）+ 源行号锚点（srcline.go）
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
@@ -73,7 +73,7 @@ docs/                    # 用户文档
   - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
   - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功后才切换
 - **数据流**：
-  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；`startup` 自动检查旧配置目录执行一次性迁移
+  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
@@ -93,7 +93,7 @@ docs/                    # 用户文档
 ## 5. 关键约定
 
 - **命名约定**：Go 标准（导出驼峰）；前端 TS 驼峰；CSS 类名 kebab-case；internal 包名与目录一致
-- **注释 / 文档语言**：用户面（README、欢迎文档、对话）中文；代码注释英文
+- **注释 / 文档语言**：用户面（README、对话）中文；代码注释英文
 - **错误处理 / 日志方式**：绑定方法返回 error 由前端捕获；`println` 仅用于 main.go 启动失败（Wails 无日志框架，遵循模板）
 
 ## 6. 约束与已知坑
@@ -115,7 +115,7 @@ docs/                    # 用户文档
 - 「Windows 下 `runtime.MessageDialog` 忽略 `Buttons` 自定义标签且返回英文规范串——原因：wails v2.14 Windows 实现用 `MessageBoxW`，`QuestionDialog` 恒为 MB_YESNO（系统本地化显示“是/否”），返回值映射为英文 `"Yes"/"No"`；曾以中文标签匹配导致点击无响应（恒落 cancel）。禁止在 Windows 依赖自定义按钮/取消键语义；需三态确认时用前端 `<dialog>` 模态（关闭/新建流程已切换，`closePending` guard 防重入）」
 - 「goldmark v1.8.5 无 `extra.WithIDGenerator`/`parser.WithIDGenerator`——原因：v2 才有；自定义 id 生成器需实现 `parser.IDs` 接口（Generate + Put）并通过 `parser.WithIDs` 注入 `parser.NewContext`，再以 `parser.WithContext` 传给 Convert；v1 的 `{#custom}` 显式 id 语法需全局开启 attribute 解析（会改变段落/强调渲染），未启用，文档中 `{#id}` 会被当作普通文本」
 - 「目录解析曾因 `split('\\n')` 字面量反斜杠导致整文档被当单行，正则 `\\s` 同理匹配字面量反斜杠+s——均于 2026-08-16 修复为 `split('\n')` 与 `\s`（commit 2e51927 / 731b3fb）」
-- 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 TestGetLastFileFirstRun 失败）；测试隔离须 `t.Setenv` 同设两者（见 filesys/settings 测试）」
+- 「`os.UserConfigDir()` 平台差异：Windows 读 `APPDATA`，Linux 读 `XDG_CONFIG_HOME`（回退 `~/.config`）——原因：测试若只重写 `APPDATA`，Linux 上会读写真实 `~/.config/Mado/` 并在用例间泄漏状态（曾致 filesys 首启用例在用例间串状态而失败）；测试隔离须 `t.Setenv` 同设两者——filesys 包在该机制退役后已无需此隔离，现用于根包启动副作用用例」
 - 「偏好持久化便携化：共享 settings.json 迁移至 exe 所在目录——原因：便携化需求；启动时若 exe 目录无 settings.json 则单次从旧 APPDATA 位置迁移；若 exe 部署于受写保护目录则持久化不可写为已知限制」
 - 「原生 `<dialog>` 必须在 DOM 根部并列放置，禁止嵌套——原因：嵌套在未打开的 `<dialog>` 内的子对话框在 `showModal()` 时，虽然挂入 top layer 但受父级 `display: none` 与渲染流约束不可见，同时激活动态遮罩捕获所有点击，导致应用假死（2026-08-19 修复）」
 - 「goldmark 块级公式解析器必须跟踪单行闭合状态（`closed: true`）并在 `Continue` 中直接 `Close`，且剥离尾随空白符——原因：goldmark 的 `Open` 返回节点后仍会在下一行调用该解析器的 `Continue`，若未记录单行闭合状态，后续行会被当作公式块内容继续追加，导致单行公式吞没全文后续 Markdown 内容（2026-08-19 修复）」
@@ -141,6 +141,10 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-29 无文件启动改为直接走 `newFile()` 空白未命名态并整体退役欢迎文档机制（删除 `GetWelcome`/`GetLastFile`/`persistWelcome`/`WelcomeDoc`），而非保留 lastfile 回退或另加开关——理由：需求就是「无文件启动 = 新文档」，空白态与 Ctrl+N 同源可保证空白文档行为只有一份实现；welcome.md 退役后无任何读取方，删除优于留死代码
+- 2026-08-29 `lastfile` 记录逻辑保留为只写（打开/保存仍写入，启动不再读取）——理由：为将来「恢复上次会话」选项留数据；因当前无读取方，已在 `filesys.SetLastFile` 与包注释处标注，避免被误判为活跃逻辑
+- 2026-08-29 目录名常量以 `settings.AppDir` 为单一来源，`filesys.AppDir` 删除——理由：两包禁止互相 import，跨包重复字面量只能靠常量归一收敛；启动迁移是 AppDir 的唯一引用方
+- 2026-08-29 新增根包启动副作用用例 `TestStartupCreatesNoWelcomeDoc`（断言 `os.UserConfigDir()` 下 Mado 目录不存在）——理由：一条断言同时守住「不写 welcome.md」与「启动不创建用户配置目录」，任何启动写入回归都会失败
 - 2026-08-29 源行号锚点由 Go 渲染期写入顶层块元素（`data-line`）而非前端解析渲染结果或 Go 另出行号数组——理由：渲染 HTML 无法反推源码行；前端正则会被 raw HTML 破坏顺序，而按序号对齐 DOM 的数组会因「链接定义不产元素、HTML 块可能产多元素」必然错位；goldmark 对 `data-` 前缀属性无条件放行，写入成本仅一个 ASTTransformer
 - 2026-08-29 预览行号栏用 CSS `content: attr(data-line)` + 绝对定位，而非父窗口行号列 + JS 测高 + scroll 同步——理由：零 JS 定位，行号随重排/换行/缩放自动跟随，天然随文档滚动；后者需逐块 `getComputedStyle`、每次渲染重建 DOM，且滚动同步易抖动
 - 2026-08-29 围栏代码块用包装层 div 承载行号，而非 `PreventSurroundingPre(true)` 自写 `<pre>`——理由：包装层下 Chroma 输出保持零变化（行包装 span 与 `<pre>` 开标签逐字保留），后者会连带删除行包装 span 并让 `hl_lines`/`linenos` 渲染路径失效
@@ -175,8 +179,7 @@ docs/                    # 用户文档
 
 ## 9. 术语表
 
-- **lastfile** = 上次打开的文件路径，持久化于共享 settings.json 的 `lastfile` 字段
-- **欢迎文档** = 首次启动时自动写入 `%APPDATA%/Mado/welcome.md` 的默认演示文档
+- **lastfile** = 上次打开的文件路径，持久化于共享 settings.json 的 `lastfile` 字段；当前只写不读（启动不再恢复它），为将来「恢复上次会话」选项保留
 - **预览通道** = 编辑区 → mdrender → iframe 内原地更新（style + article，首帧 srcdoc 引导）+ 父侧链接拦截（锚点滚动/导航阻断）的渲染链路
 - **公式通道** = Go 侧 math 扩展解析定界符输出带 `data-tex` 占位元素 → 前端父上下文 KaTeX `renderToString` 渲染 → 写入预览帧 DOM 的渲染管线
 - **源行号锚点** = Go 渲染期写入顶层块元素的 `data-line`，值为该块在 Markdown 源码中的起始行号（1 起算）；预览侧由 CSS 生成行号栏，两侧点击互跳时作为共同坐标
