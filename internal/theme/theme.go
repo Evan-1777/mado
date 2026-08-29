@@ -40,15 +40,23 @@ func ThemeCSS(themeName string, previewFont string) (string, error) {
 	return fmt.Sprintf("%s\n%s\n%s\n", tokens, fontDecl, baseCSS), nil
 }
 
-// cssFontDecl renders the --preview-font variable. A font name containing CSS
-// structure characters would break out of the declaration, so it is quoted
-// and every character that could close the string is rejected first; this
-// function is a second line of defense with an explicit error for anything
-// that still reaches it.
+// cssFontDecl renders the --preview-font variable. It is a second line of
+// defense behind settings.NormalizePreviewFont, which is the only place that
+// rejects a font name; this function never errors, it only neutralizes: the
+// two characters that can terminate a CSS double-quoted string are escaped,
+// and characters that cannot appear inside one at all (a raw newline would
+// turn the value into a bad-string token and let the rest of the line
+// re-parse as CSS) are dropped.
 func cssFontDecl(previewFont string) string {
-	// NUL bytes and newlines cannot survive a CSS string; quoting the name
-	// and escaping only what is needed keeps the declaration safe for any
-	// input that passed settings validation.
-	name := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(previewFont)
-	return fmt.Sprintf(":root { --preview-font: \"%s\", \"Cascadia Code\", \"JetBrains Mono\", Consolas, \"Microsoft YaHei UI\", \"Segoe UI\", sans-serif; }", name)
+	sanitized := strings.Map(func(r rune) rune {
+		if r == 0 || r == '\n' || r == '\r' || r == '\f' {
+			return -1
+		}
+		return r
+	}, previewFont)
+	name := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(sanitized)
+	// monospace is last in the stack so code/kbd cannot fall back to a
+	// proportional font when the requested font is missing; body text still
+	// resolves to sans-serif first and never reaches it.
+	return fmt.Sprintf(":root { --preview-font: \"%s\", \"Cascadia Code\", \"JetBrains Mono\", Consolas, \"Microsoft YaHei UI\", \"Segoe UI\", sans-serif, monospace; }", name)
 }

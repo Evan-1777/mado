@@ -19,11 +19,14 @@ import (
 // App is the root Wails-bound application object. All exported methods are
 // exposed to the frontend.
 type App struct {
-	ctx         context.Context
-	settings    settings.Settings
-	dirty       bool
-	quitting    bool
-	startupFile string
+	ctx      context.Context
+	settings settings.Settings
+	// saveSettings persists preferences. Tests override it to inject a
+	// failing store instead of making the real settings.json unwritable.
+	saveSettings func(settings.Settings) error
+	dirty        bool
+	quitting     bool
+	startupFile  string
 }
 
 // NewApp creates the application instance.
@@ -114,32 +117,50 @@ func (a *App) GetSettings() (settings.Settings, error) {
 	return a.settings, nil
 }
 
-// SetTheme persists a new theme and refreshes the window chrome.
+// persist applies mutate to a copy of the settings and saves the copy. The
+// copy is adopted only when the save succeeded, so a failed write leaves the
+// in-memory settings untouched and GetCSS/GetSettings stay consistent with
+// what is actually on disk.
+func (a *App) persist(mutate func(*settings.Settings)) error {
+	save := a.saveSettings
+	if save == nil {
+		save = settings.Save
+	}
+	next := a.settings
+	mutate(&next)
+	if err := save(next); err != nil {
+		return err
+	}
+	a.settings = next
+	return nil
+}
+
+// SetTheme persists a new theme and refreshes the window chrome. The window
+// chrome follows the persisted value: it is only updated after the save
+// succeeded.
 func (a *App) SetTheme(themeName string) error {
 	if themeName != "light" && themeName != "dark" {
 		return errors.New("SetTheme: unknown theme " + themeName)
 	}
-	a.settings.Theme = themeName
-	if err := settings.Save(a.settings); err != nil {
+	if err := a.persist(func(s *settings.Settings) { s.Theme = themeName }); err != nil {
 		return err
 	}
-	runtime.WindowSetDarkTheme(a.ctx)
 	if themeName == "light" {
 		runtime.WindowSetLightTheme(a.ctx)
+	} else {
+		runtime.WindowSetDarkTheme(a.ctx)
 	}
 	return nil
 }
 
 // SetWrap persists the editor word-wrap preference.
 func (a *App) SetWrap(wrap bool) error {
-	a.settings.Wrap = wrap
-	return settings.Save(a.settings)
+	return a.persist(func(s *settings.Settings) { s.Wrap = wrap })
 }
 
 // SetMath persists the LaTeX math rendering preference.
 func (a *App) SetMath(math bool) error {
-	a.settings.Math = math
-	return settings.Save(a.settings)
+	return a.persist(func(s *settings.Settings) { s.Math = math })
 }
 
 // SetPreviewFont validates and persists the preview font preference. The
@@ -150,16 +171,7 @@ func (a *App) SetPreviewFont(font string) error {
 	if err != nil {
 		return err
 	}
-	// Only adopt the new value once it is persisted; a failed save must
-	// leave the in-memory settings untouched so GetCSS/GetSettings stay
-	// consistent with the on-disk state.
-	next := a.settings
-	next.PreviewFont = name
-	if err := settings.Save(next); err != nil {
-		return err
-	}
-	a.settings = next
-	return nil
+	return a.persist(func(s *settings.Settings) { s.PreviewFont = name })
 }
 
 // SetTitle updates the window title and the custom title bar text.

@@ -44,7 +44,7 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `node frontend/tests/fontCommit.test.ts`（Node 原生 type-stripping，无测试框架）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（即 `node tests/fontCommit.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`，welcome 路径隔离用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入
 
 ## 3. 目录结构与模块职责
 
@@ -70,12 +70,13 @@ docs/                    # 用户文档
 - **核心模块**：
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
-  - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后）
+  - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
+  - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功后才切换
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 优先加载启动文件，否则回退 `GetWelcome`（lastfile 或欢迎文档）；`startup` 自动检查旧配置目录执行一次性迁移
   - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
-  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：`SetPreviewFont` 在 Go 侧先写副本、`settings.Save` 成功后才赋回 `a.settings`（保存失败不改内存），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体
+  - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
@@ -119,7 +120,10 @@ docs/                    # 用户文档
 - 「KaTeX 静态资源经 Wails 资产服务相对路径加载——原因：srcdoc 帧内以 `<link rel="stylesheet" href="./katex/katex.min.css"/>` 引入样式与字体，继承父文档 baseURL」
 - 「`$` 行内公式首尾空格启发式与货币误判防护——原因：`$5 and $10` 首尾含空格或未闭合不构成公式，直接退化为字面文本」
 - 「行内公式不支持跨行——原因：语法边界清晰、避免未闭合 `$` 跨段污染渲染」
-- 「Preview 字体名注入 CSS 前必须经过 settings.NormalizePreviewFont + theme.cssFontDecl 双重防线——原因：字体名会进入 CSS 变量声明，控制字符/引号/反斜杠/分号/注释符等可逃逸字符串上下文；校验失败时前端回填上一次有效值，不改变后端状态（2026-08-24）」
+- 「Preview 字体名注入 CSS 前必须经过 settings.NormalizePreviewFont + theme.cssFontDecl 双重防线——原因：字体名会进入 CSS 变量声明，控制字符/引号/反斜杠/分号/注释符等可逃逸字符串上下文；校验失败时前端回填上一次有效值，不改变后端状态（2026-08-24）。★ 两道防线职责不同：settings 层是唯一拒绝点（返回 error），theme 层无错误路径、只做中和（转义 `\` 与 `"`、丢弃 NUL/CR/LF/FF）——CSS 字符串不允许裸换行，保留它会让该声明退化并使其后内容重新按规则解析」
+- 「`--preview-font` 回退栈以 `sans-serif, monospace` 收尾——原因：code/kbd 与正文共用该变量，首选字体缺失时若只以 `sans-serif` 收尾，行内代码会退到比例字体；正文始终先命中 `sans-serif` 通用族，不会落到 `monospace`」
+- 「偏好保存失败场景的测试用 `App.saveSettings` 函数字段注入，不得用目录占位 `settings.Path()` 的方式——原因：main 包无法覆写 settings 包未导出的 `storePath`，占位法作用于 `os.Executable()` 同目录；`go test` 下该目录是 `/tmp/go-build*` 侥幸安全，但 `go test -c` 产出的二进制从含 settings.json 的目录运行会直接删除真实配置」
+- 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
 ## 7. 外部依赖与集成
 
@@ -128,6 +132,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-29 偏好写入统一收敛到 `App.persist`（副本 mutate → 保存成功才赋回，窗口主题 chrome 亦在保存成功后切换），失败注入改用 `App.saveSettings` 函数字段而非目录占位——理由：四个 setter 此前语义不一致（SetPreviewFont 保存成功才改内存，其余先改内存再保存），保存失败会内存/磁盘分流；函数字段注入无需为测试扩大 settings 包公开 API，也避免删除 exe 目录下真实 settings.json 的破坏性用例
 - 2026-08-19 标题栏设置图标规范为 Lucide 风格矢量 SVG——理由：统一 1.8 描边比例与标准对称齿轮，匹配 Windows 11 原生标题栏视觉风格
 - 2026-08-19 LaTeX 公式块解析采用 ContextKey 状态追踪与尾随空白剥离——理由：杜绝单行公式解析穿透吞没后续 Markdown 标题与段落
 - 2026-08-19 公式渲染采用 Go 解析定界符输出占位元素 + 父上下文 KaTeX 渲染回填帧 DOM——理由：维持 iframe sandbox 安全模型（无 allow-scripts），同时获得 KaTeX 纯客户端高性能渲染

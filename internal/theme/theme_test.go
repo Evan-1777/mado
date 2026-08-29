@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -64,23 +65,29 @@ func TestPreviewFontVariable(t *testing.T) {
 }
 
 // TestPreviewFontNoInjection verifies CSS structure characters cannot escape
-// the font declaration: callers such as settings.NormalizePreviewFont strip
+// the font declaration: callers such as settings.NormalizePreviewFont reject
 // them, but the theme layer must not be the place where an injection becomes
-// executable CSS. The quote is escaped inside the CSS string, and the only
-// literal selector occurrences are the ones from base.css.
+// executable CSS. The whole declaration — injected value plus the fallback
+// stack and closing brace we append — has to survive verbatim, which proves
+// the payload stayed inside the quoted string instead of becoming a rule.
 func TestPreviewFontNoInjection(t *testing.T) {
-	css, err := ThemeCSS("dark", `x"; } body { color: red; } /*`)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	const decl = `:root { --preview-font: "%s", "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", "Segoe UI", sans-serif, monospace; }`
+	cases := []struct {
+		name    string
+		input   string
+		escaped string // expected value inside the declaration
+	}{
+		{name: "quote", input: `x"; } body { color: red; } /*`, escaped: `x\"; } body { color: red; } /*`},
+		{name: "newline", input: "x\n}\nbody { color: red; }", escaped: "x}body { color: red; }"},
 	}
-	// The quote inside the value must be escaped, keeping the value a single
-	// quoted string.
-	if !strings.Contains(css, "x\\\"; } body") {
-		t.Fatalf("expected escaped quote in font value, got: %s", css)
-	}
-	// The declaration tail we append must survive: the value ends with our
-	// fallback stack, not with the attacker's content.
-	if !strings.Contains(css, "sans-serif; }") {
-		t.Fatalf("font declaration tail missing, got: %s", css)
+	for _, tc := range cases {
+		css, err := ThemeCSS("dark", tc.input)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.name, err)
+		}
+		want := fmt.Sprintf(decl, tc.escaped)
+		if !strings.Contains(css, want) {
+			t.Fatalf("%s: injected font broke out of the declaration, want substring:\n%s", tc.name, want)
+		}
 	}
 }

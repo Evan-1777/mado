@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -84,29 +85,57 @@ func TestMigrateLegacyStore(t *testing.T) {
 	})
 }
 
-// TestSetPreviewFontSaveFailureKeepsState verifies that a failed settings.Save
-// does not mutate the in-memory settings: GetCSS/GetSettings must stay
-// consistent with what is actually persisted.
-func TestSetPreviewFontSaveFailureKeepsState(t *testing.T) {
-	// Force Save to fail by occupying the store path with a directory.
-	// ReadFile on it errors (ignored by Save), so WriteFile must fail too.
-	path, err := settings.Path()
-	if err != nil {
-		t.Fatalf("settings.Path: %v", err)
+// TestPersistFailureKeepsState verifies that a failed save does not mutate the
+// in-memory settings: GetCSS/GetSettings must stay consistent with what is
+// actually persisted. The store is stubbed out via App.saveSettings so the
+// test never touches the real settings.json next to the test binary.
+func TestPersistFailureKeepsState(t *testing.T) {
+	newApp := func() *App {
+		return &App{
+			settings: settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"},
+			// A store that refuses every write.
+			saveSettings: func(settings.Settings) error { return errors.New("store not writable") },
+		}
 	}
-	if err := os.RemoveAll(path); err != nil {
-		t.Fatalf("remove existing store: %v", err)
-	}
-	if err := os.Mkdir(path, 0o755); err != nil {
-		t.Fatalf("mkdir store path: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(path) })
+	unchanged := settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"}
 
-	a := &App{settings: settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"}}
-	if err := a.SetPreviewFont("JetBrains Mono"); err == nil {
-		t.Fatalf("SetPreviewFont should fail when the store is not writable")
-	}
-	if a.settings.PreviewFont != "Fira Code" {
-		t.Fatalf("failed save mutated in-memory font: got %q, want %q", a.settings.PreviewFont, "Fira Code")
-	}
+	t.Run("SetPreviewFont", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetPreviewFont("JetBrains Mono"); err == nil {
+			t.Fatal("SetPreviewFont should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
+
+	t.Run("SetTheme", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetTheme("light"); err == nil {
+			t.Fatal("SetTheme should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
+
+	t.Run("SetWrap", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetWrap(false); err == nil {
+			t.Fatal("SetWrap should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
+
+	t.Run("SetMath", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetMath(false); err == nil {
+			t.Fatal("SetMath should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
 }

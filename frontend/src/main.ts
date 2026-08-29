@@ -30,6 +30,9 @@ interface Settings {
   PreviewFont: string;
 }
 
+// Keep in sync with settings.DefaultPreviewFont (Go side).
+const DEFAULT_PREVIEW_FONT = 'Cascadia Code';
+
 let currentTheme: 'dark' | 'light' = 'dark';
 let currentPreviewFont = '';  // last validated preview font ('' until loaded)
 let currentFile = '';
@@ -420,7 +423,10 @@ const fontCommitter = createFontCommitter({
     applyPreviewFont(value);
     if (setPreviewFontInput) setPreviewFontInput.value = value;
   },
-  fail: (err) => console.error('SetPreviewFont failed', err),
+  fail: (err) => {
+    console.error('SetPreviewFont failed', err);
+    statusEl.textContent = 'Preview font rejected';
+  },
   restore: (value) => {
     if (setPreviewFontInput) setPreviewFontInput.value = value;
   },
@@ -437,6 +443,9 @@ function syncSettingsModalUI() {
     setThemeDarkBtn.classList.toggle('active', currentTheme === 'dark');
     setThemeLightBtn.classList.toggle('active', currentTheme === 'light');
   }
+  // Reopening the modal must show the font that is actually in effect, not a
+  // stale or rejected value left in the input.
+  if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
 }
 
 function applyTheme(theme: 'dark' | 'light') {
@@ -984,13 +993,13 @@ setMathInput?.addEventListener('change', async () => {
 // method="dialog" form does not treat it as implicit submission and close
 // the settings modal on every commit.
 setPreviewFontInput?.addEventListener('change', () => {
-  void commitPreviewFont(setPreviewFontInput.value);
+  commitPreviewFont(setPreviewFontInput.value);
 });
 
 setPreviewFontInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
-    void commitPreviewFont(setPreviewFontInput.value);
+    commitPreviewFont(setPreviewFontInput.value);
   }
 });
 
@@ -1034,7 +1043,7 @@ async function init() {
     const s = await GetSettings();
     applyTheme(s.Theme === 'light' ? 'light' : 'dark');
     applyWrap(s.Wrap !== false);
-    currentPreviewFont = s.PreviewFont || 'Cascadia Code';
+    currentPreviewFont = s.PreviewFont || DEFAULT_PREVIEW_FONT;
     if (setWrapInput) setWrapInput.checked = (s.Wrap !== false);
     if (setMathInput) setMathInput.checked = (s.Math !== false);
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
@@ -1042,7 +1051,7 @@ async function init() {
     console.error('init: settings failed', err);
     applyTheme('dark');
     applyWrap(true);
-    currentPreviewFont = 'Cascadia Code';
+    currentPreviewFont = DEFAULT_PREVIEW_FONT;
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
   }
   try {

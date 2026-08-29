@@ -75,6 +75,11 @@
                         <span class="settings-desc">预览正文使用的本机字体，未安装时自动回退</span>
                     </div>
                     <div class="settings-control">
+                        <!-- Keep in sync with settings.MaxPreviewFontLen and
+                             settings.DefaultPreviewFont (Go side). Go counts
+                             bytes, maxlength counts UTF-16 units: names of
+                             non-BMP characters hit the Go limit first, which
+                             only rejects the value. -->
                         <input type="text" id="set-preview-font" class="settings-text-input"
                                placeholder="Cascadia Code" maxlength="100" spellcheck="false"/>
                     </div>
