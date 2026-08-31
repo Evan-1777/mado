@@ -1098,14 +1098,31 @@ setPreviewFontInput?.addEventListener('keydown', (e) => {
 });
 
 // Mode tabs
+// The preview iframe's scroll offset is destroyed when the preview column is
+// hidden: display:none detaches the frame's viewport and the offset drops to
+// zero, while a plain overflow container (the editor's .cm-scroller) keeps
+// its offset across the same round-trip. Capture the offset before hiding
+// and reapply it only after the column is visible again — writing scrollTop
+// while the viewport is detached is clamped to 0.
+let savedPreviewScroll: number | undefined;
+
 toolbar.querySelectorAll('.seg button').forEach((btn) => {
   btn.addEventListener('click', () => {
     toolbar.querySelectorAll('.seg button').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     const mode = btn.dataset.mode as 'split' | 'editor' | 'preview';
+    if (isPreviewVisible()) {
+      savedPreviewScroll = previewIframe.contentDocument?.scrollingElement?.scrollTop;
+    }
     pane.classList.remove('editor-only', 'preview-only');
     if (mode === 'editor') pane.classList.add('editor-only');
     if (mode === 'preview') pane.classList.add('preview-only');
+    // Write-back must happen after the hidden column is shown again.
+    if (isPreviewVisible() && savedPreviewScroll !== undefined) {
+      const se = previewIframe.contentDocument?.scrollingElement;
+      if (se) se.scrollTop = savedPreviewScroll;
+      savedPreviewScroll = undefined;
+    }
     syncGutterVisibility();
     if (isTocSidebarVisible() && tocDirty) {
       renderToc();

@@ -108,6 +108,7 @@ docs/                    # 用户文档
 - 「goldmark 引擎在 Render 中每次新建——原因：goldmark 实例非并发安全，创建成本 <10µs 可忽略」
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
+- 「模式切换隐藏预览列（`display: none`）会重置 iframe 文档滚动——原因：display:none 销毁 iframe 视口，`scrollingElement.scrollTop` 立即归零且隐藏状态下写回被钳制为 0 无效；而普通 overflow 容器（编辑器 `.cm-scroller`）在同样的显隐往返中原样保留偏移，造成"editor 不丢、preview 丢"。修复：模式切换 handler 在改类前捕获 `scrollTop`，类切换完成、预览列重新显示后再写回并清空（2026-08-31 修复）」
 - 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏或无响应——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档会被替换；即使阻断导航，goldmark 仍会将中文 href fragment 百分号编码，而标题 DOM id 保持 Unicode，直接 `getElementById(href.slice(1))` 查不到。修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），所有链接 preventDefault；fragment 先 `decodeURIComponent`（畸形编码回退原值）再 getElementById + scrollIntoView；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
 - 「Wails v2 Windows 无边框窗口右/下边缘无法缩放——原因：1. Wails 内置 JS 用 `outerWidth` 判定边缘在 WebView2 下受不可见边框偏差影响恒不成立且会重置光标；2. 右侧与右下角存在 iframe/编辑器原生滚动条（15~17px），Chromium 滚动条不向 DOM 分发事件并在近边缘时触发 mouseleave，使纯坐标计算检测失效。修复：通过 `Object.defineProperty` 永久锁定 `window.wails.flags.enableResize = false`，并在顶层 DOM 挂载 8 方向固定把手层（`z-index: 100000`），四角 10px / 四边 6px 穿透覆盖滚动条，`mousedown` 直接 `WailsInvoke("resize:" + edge)`，最大化状态下自适应隐藏（2026-08-18 深度修复）」
 - 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
@@ -141,6 +142,8 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-08-31 预览滚动跨模式切换保持采用模式切换 handler 单点保存/恢复（隐藏前捕获 `savedPreviewScroll`、类切换完成后写回），而非改用 `visibility` 等不销毁视口的隐藏方式——理由：该 handler 是唯一改变 `editor-only`/`preview-only` 类的入口，单点即根因处，最短有效差分；写回必须在列重新显示后执行（隐藏状态下写 `scrollTop` 被钳制为 0，实测无效）；编辑器侧不动（浏览器对普通溢出容器天然保留偏移）
+- 2026-08-31 新增 dev-only 无头 Chrome 回归检查 `frontend/tests/modeScroll.check.mjs`（内存 http 服务 + Wails 桩 + 真实 dist，驱动模式 tab 断言 4 个切换 cycle 的滚动保留），不接入 `npm test`/CI——理由：该 bug 的机械复现需要真实浏览器对 iframe 视口的语义，纯 Node 无法模拟；CI 为 windows-latest，依赖不保证的 Chrome 与无头行为会破坏构建链，符合项目零依赖自检约定（运行前置：`npm run build` 产 dist）
 - 2026-08-29 无文件启动改为直接走 `newFile()` 空白未命名态并整体退役欢迎文档机制（删除 `GetWelcome`/`GetLastFile`/`persistWelcome`/`WelcomeDoc`），而非保留 lastfile 回退或另加开关——理由：需求就是「无文件启动 = 新文档」，空白态与 Ctrl+N 同源可保证空白文档行为只有一份实现；welcome.md 退役后无任何读取方，删除优于留死代码
 - 2026-08-29 `lastfile` 记录逻辑保留为只写（打开/保存仍写入，启动不再读取）——理由：为将来「恢复上次会话」选项留数据；因当前无读取方，已在 `filesys.SetLastFile` 与包注释处标注，避免被误判为活跃逻辑
 - 2026-08-29 目录名常量以 `settings.AppDir` 为单一来源，`filesys.AppDir` 删除——理由：两包禁止互相 import，跨包重复字面量只能靠常量归一收敛；启动迁移是 AppDir 的唯一引用方
