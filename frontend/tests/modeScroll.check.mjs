@@ -89,10 +89,14 @@ const scenario = `<script>
       const before = scroller.scrollTop;
       document.querySelector('[data-mode="preview"]').click();
       await wait(80);
+      // Assert the switch actually happened, like the three preview cycles do.
+      const paneCls = document.querySelector('main.pane').className;
+      const editorHidden = getComputedStyle(document.querySelector('.editor-col')).display === 'none';
       document.querySelector('[data-mode="editor"]').click();
       await wait(80);
       const after = scroller.scrollTop;
-      results.push({ name: 'editor-preview-editor', before, whileHidden: -1, after, ok: before > 0 && after === before });
+      const switched = paneCls.includes('preview-only') && editorHidden;
+      results.push({ name: 'editor-preview-editor', before, whileHidden: -1, after, ok: switched && before > 0 && after === before });
     }
 
     report(results.map((r) =>
@@ -128,11 +132,17 @@ const child = spawn(chrome, [
   '--virtual-time-budget=20000', '--dump-dom', `http://127.0.0.1:${port}/`,
 ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
+child.on('error', (err) => {
+  console.error(`failed to launch ${chrome}: ${err.message}`);
+  server.close();
+  process.exit(1);
+});
+
 let out = '';
 child.stdout.on('data', (d) => { out += d; });
 child.on('close', () => {
   server.close();
   const m = out.match(/<pre id="modescroll-result">([^<]*)</);
   console.log(m ? m[1] : 'no result; tail: ' + JSON.stringify(out.slice(-400)));
-  process.exit(m && m[1].includes('ALL PASS') ? 0 : 1);
+  process.exit(m && m[1].includes('ALL PASS') && !m[1].includes('=> FAIL') ? 0 : 1);
 });
