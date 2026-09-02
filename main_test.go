@@ -108,6 +108,45 @@ func TestMigrateLegacyStore(t *testing.T) {
 	})
 }
 
+// TestLastFileFailureIsBestEffort verifies a lastfile write failure does not
+// block the primary load or save operation.
+func TestLastFileFailureIsBestEffort(t *testing.T) {
+	lastFileFailure := func(string) error { return errors.New("lastfile store unavailable") }
+
+	t.Run("LoadFile", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "load.md")
+		const want = "# loaded"
+		if err := os.WriteFile(path, []byte(want), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		a := &App{setLastFile: lastFileFailure}
+		got, err := a.LoadFile(path)
+		if err != nil {
+			t.Fatalf("LoadFile: %v", err)
+		}
+		if got != want {
+			t.Fatalf("LoadFile content = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("SaveFile", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "save.md")
+		const want = "# saved"
+		a := &App{setLastFile: lastFileFailure}
+		if err := a.SaveFile(path, want); err != nil {
+			t.Fatalf("SaveFile: %v", err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read saved file: %v", err)
+		}
+		if string(got) != want {
+			t.Fatalf("saved content = %q, want %q", string(got), want)
+		}
+	})
+}
+
 // TestPersistFailureKeepsState verifies that a failed save does not mutate the
 // in-memory settings: GetCSS/GetSettings must stay consistent with what is
 // actually persisted. The store is stubbed out via App.saveSettings so the

@@ -44,13 +44,13 @@
     3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts` 与 `tests/gutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts`、`tests/gutter.test.ts` 与 `tests/tocGutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`；lastfile 失败路径由 `TestLastFileFailureIsBestEffort` 覆盖，目录映射由 `tests/tocGutter.test.ts` 覆盖。
 
 ## 3. 目录结构与模块职责
 
 ```
 go.mod / go.sum          # Go 依赖（goldmark、wails v2、chroma 等）
-main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、拖放）
+main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、前端拖放运行时开关）
 main_test.go             # 根包测试：旧存储迁移 + 启动副作用（不写用户配置目录）
 app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
@@ -58,7 +58,7 @@ internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings �
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）+ 源行号锚点（srcline.go）
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；构建产物 dist/（app.js/app.css/index.html/katex/）
+frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；tests/ 为 Node 原生自检；构建产物 dist/（app.js/app.css/index.html/katex/）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
@@ -78,12 +78,13 @@ docs/                    # 用户文档
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
   - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
-  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级、原文行号与渲染序号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按 iframe 内标题序号 `scrollIntoView`
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级与原文行号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名与折叠状态映射比对实现增量过滤（无标题结构变化时零 DOM 重排，编辑时保留折叠状态），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按渲染块 `data-line` 定位并 `scrollIntoView`
   - 编辑器与模式：CodeMirror 扩展含 `lineNumbers()` + `codeFolding()`（无折叠箭头，折叠仅键盘 `foldKeymap`）——行号栏专用于跳转，不与折叠手势冲突；工具栏模式按钮顺序 Preview / Editor / Split，启动默认 Preview（`pane` 初始类 `pane preview-only`，与默认选中项一致）
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
-  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + SetLastFile + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
+  - 拖放：`main.go` 通过 `DragAndDrop.EnableFileDrop` 开启文件路径事件，前端以 `OnFileDrop(onDrop, false)` 接收全窗口拖放；回调筛选 Markdown 文件，并在载入前复用 `confirmDiscard()` 检查未保存修改
+  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + best-effort `SetLastFile` + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
 - **模块依赖**：
   - `internal/*` 禁止互相依赖（filesys/settings 仅通过共享 JSON 文件松耦合，禁止 import 对方）
   - `main.go`/`app.go` 是唯一允许 import internal 的包
@@ -143,6 +144,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-02 历史遗留问题批判性修复采用最短有效差分：拖放改用 `OnFileDrop(onDrop, false)` 关闭 drop-target 限制；打开与拖放在读取成功后、替换编辑内容前复用 `confirmDiscard()`；lastfile 记录改为 best-effort，不阻断读写主流程；节流回调更新时间戳使 80ms 节流生效；TOC 预览跳转改用渲染块 `data-line`，移除易错的标题序号映射；删除无调用方的 Go 拖放绑定、`title` 事件与 `StripScripts` 死代码；mathCache 在写入前超过 500 项时清空；CI 前端安装统一使用 `npm ci`。历史归档目录 `08-16-v4`、`08-16-v5`、`08-24-v2`、`08-29-v1` 的缺件保留为已知豁免，不伪造缺失的 Plan.md；后续归档继续执行 Plan.md 与 Tasks.md 双文件校验。
 - 2026-08-31 预览滚动跨模式切换保持采用模式切换 handler 单点保存/恢复（隐藏前捕获 `savedPreviewScroll`、类切换完成后写回），而非改用 `visibility` 等不销毁视口的隐藏方式——理由：该 handler 是唯一改变 `editor-only`/`preview-only` 类的入口，单点即根因处，最短有效差分；写回必须在列重新显示后执行（隐藏状态下写 `scrollTop` 被钳制为 0，实测无效）；编辑器侧不动（浏览器对普通溢出容器天然保留偏移）
 - 2026-08-31 新增 dev-only 无头 Chrome 回归检查 `frontend/tests/modeScroll.check.mjs`（内存 http 服务 + Wails 桩 + 真实 dist，驱动模式 tab 断言 4 个切换 cycle 的滚动保留），不接入 `npm test`/CI——理由：该 bug 的机械复现需要真实浏览器对 iframe 视口的语义，纯 Node 无法模拟；CI 为 windows-latest，依赖不保证的 Chrome 与无头行为会破坏构建链，符合项目零依赖自检约定（运行前置：`npm run build` 产 dist）
 - 2026-08-29 无文件启动改为直接走 `newFile()` 空白未命名态并整体退役欢迎文档机制（删除 `GetWelcome`/`GetLastFile`/`persistWelcome`/`WelcomeDoc`），而非保留 lastfile 回退或另加开关——理由：需求就是「无文件启动 = 新文档」，空白态与 Ctrl+N 同源可保证空白文档行为只有一份实现；welcome.md 退役后无任何读取方，删除优于留死代码
@@ -171,7 +173,7 @@ docs/                    # 用户文档
 - 2026-08-14 选 CodeMirror 6 而非 Monaco——理由：Monaco 200KB+ 过重，cm6 增量解析且专业级
 - 2026-08-14 选 iframe+srcdoc 首帧骨架 + 内原地更新而非 document.write——理由：隔离 CSS、防弹跳；首帧 srcdoc 引导，后续原地更新保留滚动、无闪烁（2026-08-15 修正：初始实现整体重设 srcdoc 导致编辑时预览闪烁跳顶，实测后改为原地更新，见 §6）
 - 2026-08-15 预览锚点链接采用父侧 click 拦截 + URL fragment 解码 + scrollIntoView，而非帧内脚本或放宽 sandbox——理由：sandbox 无 allow-scripts 帧内脚本不可用，allow-same-origin 已允许跨帧 DOM；Chromium 对 about:srcdoc fragment 导航会替换帧文档致黑屏，且 goldmark 对中文 href fragment 百分号编码、标题 id 保持 Unicode，必须解码后才能命中；任何导航都毁掉原地更新模型，故外链一并阻断（外链用系统浏览器打开需新增 Go 绑定，非本 bug 范围，未做）
-- 2026-08-18 Editor/Preview 聚焦模式目录采用前端共享树组件与 Markdown ATX 轻量解析，而非新增 Go API 或依赖——理由：原文行号只存在于编辑端，前端一次解析可同时服务 CodeMirror 行定位和 iframe 标题序号定位；功能局限在聚焦模式，Split 布局无需改动
+- 2026-08-18 Editor/Preview 聚焦模式目录采用前端共享树组件与 Markdown ATX 轻量解析，而非新增 Go API 或依赖——理由：原文行号只存在于编辑端，前端一次解析可同时服务 CodeMirror 行定位和预览渲染块 `data-line` 定位；功能局限在聚焦模式，Split 布局无需改动
 - 2026-08-16 标题 id 采用 GitHub 风格 slug 生成器（中文保留、ASCII 小写、空白转 `-`、全角标点删除、重复加 `-N`）而非 goldmark 内置生成器——理由：内置 `ids.Generate` 丢弃全部非 ASCII，中文标题 id 退化，目录链接（如 `#一先搞清楚-wsl-是什么`）永远查不到；实测 GitHub 对 `动手学深度学习（Dive into Deep Learning，D2L.ai）` 生成 `动手学深度学习dive-into-deep-learningd2lai`，规则与用户手写目录格式一致；纯 ASCII 标题在新旧规则下产物相同，无兼容性变化
 - 2026-08-15 测试配置目录隔离采用 t.Setenv 同设 APPDATA + XDG_CONFIG_HOME 而非仅重写 APPDATA——理由：os.UserConfigDir 跨平台读取不同环境变量，双设一处覆盖两端，避免 Linux 上测试污染真实 ~/.config
 - 2026-08-15 包管理器 pnpm → npm（本地与 CI 一致切换）——理由：新开发环境无 pnpm，统一链路避免双锁文件漂移

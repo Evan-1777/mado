@@ -22,10 +22,6 @@ export function LoadFile(arg1) {
   return window['go']['main']['App']['LoadFile'](arg1);
 }
 
-export function OnFileDrop(arg1, arg2, arg3) {
-  return window['go']['main']['App']['OnFileDrop'](arg1, arg2, arg3);
-}
-
 export function OpenFileDialog() {
   return window['go']['main']['App']['OpenFileDialog']();
 }

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs');fs.copyFileSync('index.html','dist/index.html');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\"",
     "dev": "node -e \"const fs=require('fs');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\" && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
-    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts"
+    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

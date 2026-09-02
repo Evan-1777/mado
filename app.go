@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -24,9 +23,11 @@ type App struct {
 	// saveSettings persists preferences. Tests override it to inject a
 	// failing store instead of making the real settings.json unwritable.
 	saveSettings func(settings.Settings) error
-	dirty        bool
-	quitting     bool
-	startupFile  string
+	// setLastFile records the last path. Tests override it to inject a failure.
+	setLastFile func(string) error
+	dirty       bool
+	quitting    bool
+	startupFile string
 }
 
 // NewApp creates the application instance.
@@ -76,9 +77,11 @@ func (a *App) LoadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := filesys.SetLastFile(path); err != nil {
-		return "", err
+	setLastFile := a.setLastFile
+	if setLastFile == nil {
+		setLastFile = filesys.SetLastFile
 	}
+	_ = setLastFile(path)
 	a.SetTitle(filepath.Base(path))
 	return content, nil
 }
@@ -88,9 +91,11 @@ func (a *App) SaveFile(path, content string) error {
 	if err := filesys.WriteFile(path, content); err != nil {
 		return err
 	}
-	if err := filesys.SetLastFile(path); err != nil {
-		return err
+	setLastFile := a.setLastFile
+	if setLastFile == nil {
+		setLastFile = filesys.SetLastFile
 	}
+	_ = setLastFile(path)
 	a.SetTitle(filepath.Base(path))
 	return nil
 }
@@ -168,13 +173,12 @@ func (a *App) SetPreviewFont(font string) error {
 	return a.persist(func(s *settings.Settings) { s.PreviewFont = name })
 }
 
-// SetTitle updates the window title and the custom title bar text.
+// SetTitle updates the native window title.
 func (a *App) SetTitle(title string) {
 	if a.ctx == nil {
 		return
 	}
 	runtime.WindowSetTitle(a.ctx, "Mado — "+title)
-	runtime.EventsEmit(a.ctx, "title", title)
 }
 
 // SetStartupFile records the file path passed on the command line (used by
@@ -245,19 +249,4 @@ func (a *App) SaveFileDialog() string {
 		return ""
 	}
 	return f
-}
-
-// OnFileDrop handles a file dragged onto the window. Only the first .md-like
-// file is loaded.
-func (a *App) OnFileDrop(x, y int, paths []string) {
-	for _, p := range paths {
-		ext := strings.ToLower(filepath.Ext(p))
-		if ext == ".md" || ext == ".markdown" || ext == ".mdown" || ext == ".txt" {
-			_, err := a.LoadFile(p)
-			if err == nil {
-				runtime.EventsEmit(a.ctx, "file-loaded", p)
-			}
-			return
-		}
-	}
 }

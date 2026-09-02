@@ -191,8 +191,3 @@ func slugify(value []byte) string {
 	}
 	return "heading"
 }
-
-// StripScripts removes script tags from raw HTML (used defensively).
-func StripScripts(html string) string {
-	return strings.ReplaceAll(html, "<script", "&lt;script")
-}

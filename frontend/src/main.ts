@@ -159,7 +159,6 @@ type TocNode = {
   level: number;
   text: string;
   line: number;
-  ordinal: number;
   children: TocNode[];
   expanded: boolean;
 };
@@ -174,7 +173,6 @@ function parseToc(markdownText: string): TocNode[] {
   const stack: TocNode[] = [];
   const lines = markdownText.split('\n');
   let fenced = false;
-  let ordinal = 0;
   let nextId = 0;
 
   for (let i = 0; i < lines.length; i++) {
@@ -192,7 +190,6 @@ function parseToc(markdownText: string): TocNode[] {
       level: match[2].length,
       text: match[3].trim(),
       line: i,
-      ordinal: ordinal++,
       children: [],
       expanded: true, // Default all outline nodes expanded
     };
@@ -327,8 +324,7 @@ function jumpToTocNode(node: TocNode) {
     cm.focus();
     return;
   }
-  const headings = Array.from(previewIframe.contentDocument?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []);
-  headings[node.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  scrollPreviewToLine(node.line + 1);
 }
 
 function updateToc(markdownText: string) {
@@ -559,6 +555,7 @@ function scheduleRender() {
   const wait = Math.max(0, THROTTLE_MS - (now - lastRenderAt));
   renderTimer = window.setTimeout(() => {
     renderTimer = null;
+    lastRenderAt = Date.now();
     void refreshPreview();
   }, Math.max(DEBOUNCE_MS, wait));
 }
@@ -602,6 +599,7 @@ function renderMathInFrame(frameDoc: Document | null | undefined) {
         console.error('KaTeX render error:', err);
         rendered = el.innerHTML;
       }
+      if (mathCache.size > 500) mathCache.clear();
       mathCache.set(key, rendered);
     }
     el.innerHTML = rendered;
@@ -859,6 +857,7 @@ async function openFile() {
     const path = await OpenFileDialog();
     if (!path) return;
     const content = await LoadFile(path);
+    if (!(await confirmDiscard())) return;
     await loadContent(path, content);
   } catch (err) {
     console.error(err);
@@ -1135,13 +1134,16 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
 const onDrop = (x: number, y: number, paths: string[]) => {
   const p = paths.find((q) => /\.(md|markdown|mdown|txt)$/i.test(q));
   if (!p) return;
-  void LoadFile(p).then((content) => loadContent(p, content));
+  void LoadFile(p).then(async (content) => {
+    if (!(await confirmDiscard())) return;
+    await loadContent(p, content);
+  });
 };
 
 // OnFileDrop is available in the production runtime; guard so a missing API
 // cannot abort the whole bundle before init() runs.
 try {
-  OnFileDrop(onDrop);
+  OnFileDrop(onDrop, false);
 } catch {
   // Drag-and-drop unavailable; file dialog still works.
 }

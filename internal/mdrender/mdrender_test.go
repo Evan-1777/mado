@@ -51,9 +51,9 @@ func TestRenderTaskList(t *testing.T) {
 	}
 }
 
-// TestStripScripts verifies <script> tags are removed while other raw HTML
-// (kbd) is preserved.
-func TestStripScripts(t *testing.T) {
+// TestRenderRemovesScriptTags verifies Render removes <script> tags while
+// preserving other raw HTML (kbd).
+func TestRenderRemovesScriptTags(t *testing.T) {
 	src := "<script>alert(1)</script><kbd>Ctrl</kbd>"
 	out, err := Render(src, false)
 	if err != nil {
