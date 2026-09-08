@@ -83,15 +83,82 @@ func dataLine(attr highlighting.ImmutableAttributes) (string, bool) {
 var scriptRe = regexp.MustCompile(`(?is)<\s*/?\s*script\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
 
 // metaTagRe finds a complete meta tag without treating a > inside a quoted
-// attribute as the end of the tag. refreshAttrRe then checks the attribute
-// value separately so refresh-policy and similar values are preserved.
+// attribute as the end of the tag. hasRefreshMeta then checks attributes with
+// the same quote-aware boundaries so refresh-policy and similar values remain.
 var metaTagRe = regexp.MustCompile(`(?is)<\s*meta\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
-var refreshAttrRe = regexp.MustCompile(`(?is)\s+http-equiv\s*=\s*(?:"\s*refresh\s*"|'\s*refresh\s*'|refresh(?:\s|/?>))`)
+
+func htmlSpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\f', '\r':
+		return true
+	default:
+		return false
+	}
+}
+
+func hasRefreshMeta(tag string) bool {
+	const meta = "meta"
+	i := 1
+	for i < len(tag) && htmlSpace(tag[i]) {
+		i++
+	}
+	if i+len(meta) > len(tag) || !strings.EqualFold(tag[i:i+len(meta)], meta) {
+		return false
+	}
+	i += len(meta)
+	for i < len(tag)-1 {
+		for i < len(tag)-1 && (htmlSpace(tag[i]) || tag[i] == '/') {
+			i++
+		}
+		if i >= len(tag)-1 || tag[i] == '>' {
+			break
+		}
+
+		start := i
+		for i < len(tag)-1 && !htmlSpace(tag[i]) && tag[i] != '=' && tag[i] != '/' && tag[i] != '>' {
+			i++
+		}
+		name := tag[start:i]
+		for i < len(tag)-1 && htmlSpace(tag[i]) {
+			i++
+		}
+
+		value := ""
+		if i < len(tag)-1 && tag[i] == '=' {
+			i++
+			for i < len(tag)-1 && htmlSpace(tag[i]) {
+				i++
+			}
+			if i < len(tag)-1 && (tag[i] == '\'' || tag[i] == '"') {
+				quote := tag[i]
+				i++
+				start = i
+				for i < len(tag)-1 && tag[i] != quote {
+					i++
+				}
+				value = tag[start:i]
+				if i < len(tag)-1 {
+					i++
+				}
+			} else {
+				start = i
+				for i < len(tag)-1 && !htmlSpace(tag[i]) && tag[i] != '>' {
+					i++
+				}
+				value = strings.TrimSuffix(tag[start:i], "/")
+			}
+		}
+		if strings.EqualFold(name, "http-equiv") && strings.EqualFold(strings.TrimSpace(value), "refresh") {
+			return true
+		}
+	}
+	return false
+}
 
 func sanitizeHTML(html string) string {
 	html = scriptRe.ReplaceAllString(html, "")
 	return metaTagRe.ReplaceAllStringFunc(html, func(tag string) string {
-		if refreshAttrRe.MatchString(tag) {
+		if hasRefreshMeta(tag) {
 			return ""
 		}
 		return tag

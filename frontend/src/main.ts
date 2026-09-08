@@ -508,9 +508,7 @@ const wrapCompartment = new Compartment();
 
 // ---------------------------------------------------------------- render scheduling
 
-const renderScheduler = createRenderScheduler(() => {
-  void refreshPreview();
-}, 80);
+const renderScheduler = createRenderScheduler(refreshPreview, 80);
 
 const editorState = EditorState.create({
   doc: '',
@@ -937,16 +935,34 @@ async function confirmDiscard(): Promise<boolean> {
 // ---------------------------------------------------------------- close flow
 
 // In-app unsaved-changes confirm. The native <dialog> in index.html handles
-// Esc (cancel) and focus trapping; form method="dialog" sets returnValue to
-// the clicked button's value before the close event fires.
+// Esc (cancel) and focus trapping; the form's submitter is the authoritative
+// result for button choices, while cancel/close cover non-submit dismissal.
 function askUnsaved(): Promise<'yes' | 'no' | 'cancel'> {
   const dlg = document.getElementById('close-dialog') as HTMLDialogElement;
-  if (!dlg || dlg.open) return Promise.resolve('cancel');
+  const form = dlg?.querySelector('form');
+  if (!dlg || !form || dlg.open) return Promise.resolve('cancel');
   return new Promise((resolve) => {
-    const onClose = () => {
+    let settled = false;
+    const finish = (choice: 'yes' | 'no' | 'cancel') => {
+      if (settled) return;
+      settled = true;
+      form.removeEventListener('submit', onSubmit);
+      dlg.removeEventListener('cancel', onCancel);
       dlg.removeEventListener('close', onClose);
-      resolve(dlg.returnValue === 'yes' || dlg.returnValue === 'no' ? dlg.returnValue : 'cancel');
+      resolve(choice);
     };
+    const onSubmit = (event: SubmitEvent) => {
+      const value = event.submitter?.getAttribute('value');
+      if (value === 'yes' || value === 'no' || value === 'cancel') finish(value);
+    };
+    const onCancel = () => finish('cancel');
+    const onClose = () => {
+      const value = dlg.returnValue;
+      finish(value === 'yes' || value === 'no' ? value : 'cancel');
+    };
+    dlg.returnValue = '';
+    form.addEventListener('submit', onSubmit);
+    dlg.addEventListener('cancel', onCancel);
     dlg.addEventListener('close', onClose);
     dlg.showModal();
   });

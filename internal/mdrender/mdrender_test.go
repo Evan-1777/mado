@@ -70,11 +70,22 @@ func TestRenderRemovesScriptTags(t *testing.T) {
 // TestSanitizeMetaRefresh verifies refresh navigation is removed without
 // changing ordinary meta tags, escaped code, or existing script stripping.
 func TestSanitizeMetaRefresh(t *testing.T) {
+	for _, src := range []string{
+		`<meta/http-equiv="refresh" content="0;url=https://evil.test">`,
+		`<meta name="viewport"/http-equiv="refresh" content="0">`,
+	} {
+		if got := sanitizeHTML(src); got != "" {
+			t.Fatalf("direct sanitizer kept refresh meta %q as %q", src, got)
+		}
+	}
+
 	removed := []string{
 		`<meta http-equiv="refresh" content="0;url=https://evil.test">`,
 		`<meta content="x > y" http-equiv="refresh">`,
 		`<META CONTENT='1;url=https://evil.test' HTTP-EQUIV = ' ReFrEsH ' />`,
 		"<meta\n  http-equiv = \"refresh\"\n  content = \"0\">",
+		`<meta name="viewport"/http-equiv="refresh" content="0">`,
+		`<meta http-equiv=refresh/>`,
 	}
 	for _, src := range removed {
 		out, err := Render(src, false)
@@ -93,6 +104,25 @@ func TestSanitizeMetaRefresh(t *testing.T) {
 	}
 	if !contains(out, `<meta charset="utf-8">`) || !contains(out, `http-equiv="refresh-policy"`) {
 		t.Fatalf("ordinary meta tags changed: %q", out)
+	}
+	escaped, err := Render(`<meta/http-equiv="refresh" content="0;url=https://evil.test">`, false)
+	if err != nil {
+		t.Fatalf("render escaped slash meta: %v", err)
+	}
+	if contains(escaped, "<meta") || !contains(escaped, "&lt;meta/") {
+		t.Fatalf("invalid slash meta became an HTML tag: %q", escaped)
+	}
+	for _, src := range []string{
+		`<meta content="/http-equiv=refresh">`,
+		`<meta content='x > /http-equiv=refresh'>`,
+	} {
+		out, err := Render(src, false)
+		if err != nil {
+			t.Fatalf("render preserved attribute value %q: %v", src, err)
+		}
+		if !contains(out, "http-equiv=refresh") {
+			t.Fatalf("attribute value was mistaken for refresh meta: %q", out)
+		}
 	}
 
 	code, err := Render("```html\n<meta http-equiv=\"refresh\" content=\"0\">\n```", false)

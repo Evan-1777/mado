@@ -102,6 +102,48 @@ function makeClock() {
 
 {
   const clock = makeClock();
+  const calls: number[] = [];
+  let releaseFirst!: () => void;
+  let first = true;
+  const scheduler = createRenderScheduler(() => {
+    calls.push(clock.now);
+    if (!first) return;
+    first = false;
+    return new Promise<void>((resolve) => { releaseFirst = resolve; });
+  }, 80, clock.api);
+  scheduler.schedule();
+  clock.advance(0);
+  scheduler.schedule();
+  clock.advance(200);
+  assert.deepEqual(calls, [0], 'in-flight render blocks extra timers');
+  releaseFirst();
+  await Promise.resolve();
+  await Promise.resolve();
+  clock.advance(0);
+  assert.deepEqual(calls, [0, 200], 'latest request runs after in-flight render settles');
+}
+
+{
+  const clock = makeClock();
+  const calls: number[] = [];
+  let releaseFirst!: () => void;
+  const scheduler = createRenderScheduler(() => {
+    calls.push(clock.now);
+    return new Promise<void>((resolve) => { releaseFirst = resolve; });
+  }, 80, clock.api);
+  scheduler.schedule();
+  clock.advance(0);
+  scheduler.schedule();
+  scheduler.cancel();
+  releaseFirst();
+  await Promise.resolve();
+  await Promise.resolve();
+  clock.advance(100);
+  assert.deepEqual(calls, [0], 'cancel drops a trailing request behind an in-flight render');
+}
+
+{
+  const clock = makeClock();
   let calls = 0;
   const scheduler = createRenderScheduler(() => calls++, 80, clock.api);
   scheduler.schedule();

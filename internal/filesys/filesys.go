@@ -37,14 +37,26 @@ func ReadFile(path string) (string, error) {
 // WriteFile writes content to path through a same-directory temporary file.
 // The old target is left untouched until the complete replacement is ready.
 func WriteFile(path, content string) error {
+	// Rename replaces a symlink itself, so resolve an existing link before
+	// creating the replacement. A dangling link fails closed instead.
+	writePath := path
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		writePath, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return err
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
 	mode := os.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
+	if info, err := os.Stat(writePath); err == nil {
 		mode = info.Mode().Perm()
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".mado-*")
+	tmp, err := os.CreateTemp(filepath.Dir(writePath), ".mado-*")
 	if err != nil {
 		return err
 	}
@@ -72,7 +84,7 @@ func WriteFile(path, content string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := os.Rename(tmp.Name(), writePath); err != nil {
 		return err
 	}
 	committed = true

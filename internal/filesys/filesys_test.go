@@ -2,8 +2,10 @@ package filesys
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -92,6 +94,54 @@ func TestWriteFileAtomic(t *testing.T) {
 		if strings.HasPrefix(entry.Name(), ".mado-") {
 			t.Fatalf("temporary file left behind: %s", entry.Name())
 		}
+	}
+}
+
+func TestWriteFileSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.md")
+	link := filepath.Join(dir, "link.md")
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" || errors.Is(err, os.ErrPermission) {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if err := WriteFile(link, "new"); err != nil {
+		t.Fatalf("write through symlink: %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("lstat link: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("write replaced symlink with %s", info.Mode())
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(got) != "new" {
+		t.Fatalf("target content = %q, want %q", got, "new")
+	}
+
+	dangling := filepath.Join(dir, "dangling.md")
+	if err := os.Symlink(filepath.Join(dir, "missing.md"), dangling); err != nil {
+		t.Fatalf("create dangling symlink: %v", err)
+	}
+	if err := WriteFile(dangling, "must fail"); err == nil {
+		t.Fatal("WriteFile unexpectedly replaced dangling symlink")
+	}
+	info, err = os.Lstat(dangling)
+	if err != nil {
+		t.Fatalf("lstat dangling link: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("failed write replaced dangling symlink")
 	}
 }
 

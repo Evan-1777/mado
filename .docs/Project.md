@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.7：启动/性能/安全治理完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.8：09-08-v1 遗留问题修复完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -41,7 +41,7 @@
   - **本机验证链**（最小占用，产物均 gitignored）：
     1. `cd frontend && npm install --include=dev`（★ 本环境 `NODE_ENV=production` 且 `omit=dev`，不加 `--include=dev` 会跳过 esbuild）
     2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`（stdout 丢弃；★ 必须带 `--loader:.css=empty`，否则 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`）
-    3. `npm run build` 产出 `dist/`（go:embed 依赖；当前实测约 2.4MB，KaTeX 样式与 woff2 字体占大头）
+    3. `npm run build`（esbuild 后调用共享 `npm run copy-assets`）产出 `dist/`（go:embed 依赖；当前实测约 2.4MB，KaTeX 样式与 woff2 字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
 - **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；并发与竞态回归用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts`、`tests/gutter.test.ts`、`tests/tocGutter.test.ts` 与 `tests/renderScheduler.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；dev-only 无头检查运行 `npm run build && node tests/modeScroll.check.mjs` 与 `node tests/startup.check.mjs`，可用 `CHROME_BIN` 覆盖浏览器路径，不接入 npm test/CI；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`；lastfile 失败路径由 `TestLastFileFailureIsBestEffort` 覆盖，目录映射由 `tests/tocGutter.test.ts` 覆盖。
@@ -54,11 +54,11 @@ main.go                  # Wails 入口：窗口配置（1280×800、Frameless�
 main_test.go             # 根包测试：旧存储迁移、启动副作用、并发绑定与状态一致性
 app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等；读写锁守护设置/脏/退出状态
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
-internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；文档保存使用同目录临时文件原子替换；无读取方，见 §9）
+internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；文档保存解析符号链接后在真实目标目录原子替换；无读取方，见 §9）
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go，渲染器按引擎实例化）+ 源行号锚点（srcline.go）+ script/meta refresh 净化
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/renderScheduler.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；tests/ 为 Node 原生自检与 dev-only 无头检查；构建产物 dist/（app.js/app.css/index.html/katex/，字体仅 woff2）
+frontend/                # 前端：src/main.ts + src/renderScheduler.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + scripts/copy-assets.mjs + index.html；tests/ 为 Node 原生自检与 dev-only 无头检查；构建产物 dist/（app.js/app.css/index.html/katex/，字体仅 woff2）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
@@ -71,10 +71,10 @@ docs/                    # 用户文档
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
   - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
-  - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功并解锁后才切换；App 的 `sync.RWMutex` 守护设置、dirty 与 quitting，`Render/GetCSS/GetSettings` 在锁内取快照，`main.go` 通过 `shouldPreventClose()` 读取关闭快照，偏好与 lastfile 的共享 JSON 写入在同一进程内串行化
+  - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功并解锁后才切换；App 的 `sync.RWMutex` 守护设置、dirty 与 quitting，`Render/GetCSS/GetSettings` 在锁内取快照，`main.go` 通过 `shouldPreventClose()` 读取关闭快照，偏好与 lastfile 的共享 JSON 写入在同一进程内串行化；渲染调度器在 refresh Promise 完成前合并最新请求
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；初始化主题仅应用界面状态、不触发预览，加载/新建在清空旧 timer 并抑制文档监听副作用后显式渲染一次；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
-  - 编辑：CodeMirror updateListener（尾随 80ms 节流；pending timer 合并，程序性替换先 `cancel()`）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地更新发生变化的 style 文本或 article innerHTML，并仅在 HTML 变化时调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
+  - 编辑：CodeMirror updateListener（尾随 80ms 节流；pending timer 合并，程序性替换先 `cancel()`；refresh Promise 在途时只保留一个最新请求）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地更新发生变化的 style 文本或 article innerHTML，并仅在 HTML 变化时调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
   - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
@@ -137,12 +137,16 @@ docs/                    # 用户文档
 - 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
-- 「文档保存采用同目录临时文件 + 原文件权限 + `Sync()` + `Rename` 的最佳努力替换」——原因：写入、刷盘或改名失败时清理临时文件并保留旧目标；不宣称 Windows 与底层文件系统具备跨平台绝对断电原子性
+- 「文档保存采用同目录临时文件 + 原文件权限 + `Sync()` + `Rename` 的最佳努力替换，并先解析符号链接真实目标」——原因：写入、刷盘或改名失败时清理临时文件并保留旧目标，保存链接不会把链接替换成普通文件；目标目录必须具备创建/改名权限，权限不足时保持失败而不回退到截断覆写；不宣称 Windows 与底层文件系统具备跨平台绝对断电原子性
 - 「App 绑定状态由单一 `sync.RWMutex` 守护，关闭回调只能调用 `shouldPreventClose()` 快照，共享 JSON 的 settings/lastfile 写路径在进程内串行化」——原因：Wails 绑定运行在独立 goroutine；跨进程多实例竞争仍是已接受边界
 - 「渲染输出剥离 `http-equiv` 值为 refresh 的 meta 标签」——原因：sandbox 允许帧自导航，meta refresh 不经过父侧 click 拦截；净化器按引号边界识别完整标签，保留 `refresh-policy` 与代码块中的转义文本
 - 「打开与拖放统一经 `openPath()`，未保存确认发生在 `LoadFile` 之前；读取失败由状态栏显示 `Open failed`」——原因：避免取消确认后标题/lastfile 已产生副作用，并消除拖放 Promise rejection 静默失败；选中文件后先弹确认再暴露读取错误是已接受取舍
 - 「KaTeX 构建产物仅复制源目录中的 `.woff2`，复制前清空目标字体目录并按源目录动态对照」——原因：WebView2/Chromium 使用 woff2，删除 ttf/woff 减少嵌入体积，动态对照避免绑定 KaTeX 补丁版本
 - 「安全审查接受内联 on* 与 `javascript:` 链接由 sandbox + 父侧全链接拦截双重阻断；远程图片/追踪像素与 `<base href>` 保持默认 HTML 语义；settings.json 非原子写失败回退默认值；跨进程多实例共享配置竞争不处理」——原因：CSP 或额外 HTML 过滤会破坏默认 HTML/远程图片语义，相关治理超出本阶段边界
+
+- 「原生确认 dialog 每次 `showModal()` 前清空 `returnValue`，按钮结果读取 `form submitter.value`，`cancel/close` 处理非按钮关闭」——原因：HTMLDialogElement 会保留上一次关闭结果，取消后的陈旧值会污染下一次打开/拖放确认；提交事件不依赖无头环境的 close 事件时序
+- 「前端 build/dev 通过 `scripts/copy-assets.mjs` 共享 index、KaTeX CSS 与 woff2 复制逻辑」——原因：两条入口必须对称创建可运行的 dist 资源，删除重复内联命令以避免资产清单漂移
+- 「渲染调度器以 refresh Promise settle 作为尾随请求释放点」——原因：长文档渲染期间只保留最新请求，避免后端继续执行已过期 AST 工作；已开始的 Promise 不伪造取消，仍由 renderVersion 丢弃过期结果
 
 ## 7. 外部依赖与集成
 
@@ -151,6 +155,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-08 针对 09-08-v1 审计遗留问题采用最短结构修复：meta refresh 在完整标签内按引号状态解析属性并接受 HTML 空白/斜杠分隔；WriteFile 先解析符号链接真实目标，悬空链接失败且不降级为截断覆写；askUnsaved 每次打开清空 dialog returnValue；build/dev 共用 `copy-assets.mjs`；renderScheduler 以 Promise 完成做轻量背压并合并最新请求。未采用 AST 全量重写、跨目录临时文件或权限失败时直接写入：前者改变 raw HTML 语义，后两者分别破坏原子替换或失败不变性
 - 2026-09-05 本阶段采用单一尾随 80ms 节流调度器（pending timer 合并，提供 `cancel()`）替代防抖与失效节流叠加；初始化主题只改 UI 状态，程序性文档替换取消旧 timer、抑制 dirty/排程并显式渲染一次；预览 HTML/CSS 独立比较后按变化写入；打开与拖放统一经 `openPath()` 在确认后读取并统一反馈错误；理由是保持单次启动渲染、连续输入可及时更新、主题切换不重建正文。同期采用 App 单一读写锁与关闭快照、同目录临时文件权限继承 + Sync + Rename 的安全保存、meta refresh 精准剥离、KaTeX 字体 woff2-only 动态对照。未采用 Windows 专用原子替换 API、KaTeX 懒加载、预览增量 DOM 架构或 CSP：前者增加平台条件代码，后三者分别扩大加载/状态管理、重构范围或破坏默认 HTML/远程图片语义
 - 2026-09-02 历史遗留问题批判性修复采用最短有效差分：拖放改用 `OnFileDrop(onDrop, false)` 关闭 drop-target 限制；打开与拖放在读取成功后、替换编辑内容前复用 `confirmDiscard()`；lastfile 记录改为 best-effort，不阻断读写主流程；节流回调更新时间戳使 80ms 节流生效；TOC 预览跳转改用渲染块 `data-line`，移除易错的标题序号映射；删除无调用方的 Go 拖放绑定、`title` 事件与 `StripScripts` 死代码；mathCache 在写入前超过 500 项时清空；CI 前端安装统一使用 `npm ci`。历史归档目录 `08-16-v4`、`08-16-v5`、`08-24-v2`、`08-29-v1` 的缺件保留为已知豁免，不伪造缺失的 Plan.md；后续归档继续执行 Plan.md 与 Tasks.md 双文件校验。
 - 2026-08-31 预览滚动跨模式切换保持采用模式切换 handler 单点保存/恢复（隐藏前捕获 `savedPreviewScroll`、类切换完成后写回），而非改用 `visibility` 等不销毁视口的隐藏方式——理由：该 handler 是唯一改变 `editor-only`/`preview-only` 类的入口，单点即根因处，最短有效差分；写回必须在列重新显示后执行（隐藏状态下写 `scrollTop` 被钳制为 0，实测无效）；编辑器侧不动（浏览器对普通溢出容器天然保留偏移）

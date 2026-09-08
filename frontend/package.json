@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs');fs.copyFileSync('index.html','dist/index.html');fs.rmSync('dist/katex/fonts',{recursive:true,force:true});fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');for(const f of fs.readdirSync('node_modules/katex/dist/fonts'))if(f.endsWith('.woff2'))fs.copyFileSync('node_modules/katex/dist/fonts/'+f,'dist/katex/fonts/'+f)\"",
-    "dev": "node -e \"const fs=require('fs');fs.rmSync('dist/katex/fonts',{recursive:true,force:true});fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');for(const f of fs.readdirSync('node_modules/katex/dist/fonts'))if(f.endsWith('.woff2'))fs.copyFileSync('node_modules/katex/dist/fonts/'+f,'dist/katex/fonts/'+f)\" && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
+    "copy-assets": "node scripts/copy-assets.mjs",
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && npm run copy-assets",
+    "dev": "npm run copy-assets && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
     "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts && node tests/renderScheduler.test.ts"
   },
   "dependencies": {
