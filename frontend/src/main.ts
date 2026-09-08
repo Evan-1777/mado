@@ -14,6 +14,7 @@ import {
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
+import { createRenderScheduler } from './renderScheduler';
 
 // ---------------------------------------------------------------- helpers
 
@@ -40,6 +41,9 @@ let currentFile = '';
 let dirty = false;
 let renderVersion = 0;         // guards against out-of-order fetch responses
 let previewCss = '';           // cached preview stylesheet for current theme
+let lastWrittenHtml = '';
+let lastWrittenCss = '';
+let isLoading = false;
 
 // ---------------------------------------------------------------- dom refs
 
@@ -459,7 +463,7 @@ function syncSettingsModalUI() {
   if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
 }
 
-function applyTheme(theme: 'dark' | 'light') {
+function applyTheme(theme: 'dark' | 'light', refresh = true) {
   currentTheme = theme;
   document.documentElement.dataset.theme = theme;
   syncSettingsModalUI();
@@ -468,7 +472,7 @@ function applyTheme(theme: 'dark' | 'light') {
     cm.dispatch({ effects: themeCompartment.reconfigure(theme === 'dark' ? [oneDark] : [lightSyntax]) });
   }
   previewCss = ''; // invalidate cached stylesheet so preview follows theme
-  void refreshPreview();
+  if (refresh) void refreshPreview();
 }
 
 function applyWrap(on: boolean) {
@@ -502,6 +506,12 @@ async function toggleTheme() {
 const themeCompartment = new Compartment();
 const wrapCompartment = new Compartment();
 
+// ---------------------------------------------------------------- render scheduling
+
+const renderScheduler = createRenderScheduler(() => {
+  void refreshPreview();
+}, 80);
+
 const editorState = EditorState.create({
   doc: '',
   extensions: [
@@ -532,33 +542,14 @@ const editorState = EditorState.create({
       { key: 'Ctrl-Shift-p', run: () => { void openFile(); return true; } },
     ]),
     EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        setDirty(true);
-        scheduleRender();
-      }
+      if (!update.docChanged || isLoading) return;
+      setDirty(true);
+      renderScheduler.schedule();
     }),
   ],
 });
 
 let cm = new EditorView({ state: editorState, parent: editorHost });
-
-// ---------------------------------------------------------------- debounced render
-
-let renderTimer: number | null = null;
-let lastRenderAt = 0;
-const DEBOUNCE_MS = 100;
-const THROTTLE_MS = 80;
-
-function scheduleRender() {
-  if (renderTimer !== null) window.clearTimeout(renderTimer);
-  const now = Date.now();
-  const wait = Math.max(0, THROTTLE_MS - (now - lastRenderAt));
-  renderTimer = window.setTimeout(() => {
-    renderTimer = null;
-    lastRenderAt = Date.now();
-    void refreshPreview();
-  }, Math.max(DEBOUNCE_MS, wait));
-}
 
 async function refreshPreview() {
   const md = cm.state.doc.toString();
@@ -623,6 +614,10 @@ function writePreview(html: string) {
 <article id="md-content">${html}</article>
 </body>
 </html>`;
+  const rememberWritten = () => {
+    lastWrittenHtml = html;
+    lastWrittenCss = previewCss;
+  };
   previewEmpty.hidden = html.trim().length > 0;
   const win = previewIframe.contentWindow;
   const frameDoc = win && win.document;
@@ -632,16 +627,26 @@ function writePreview(html: string) {
     // First render, or the frame was reset underneath us: rebuild the
     // skeleton. srcdoc bootstrap keeps the sandboxed same-origin model.
     previewIframe.srcdoc = doc();
+    rememberWritten();
     syncGutterVisibility();
     return;
   }
+
+  const cssChanged = previewCss !== lastWrittenCss;
+  const htmlChanged = html !== lastWrittenHtml;
   try {
-    style.textContent = previewCss;   // CSS first: no stale-style flash
-    content.innerHTML = html;
-    renderMathInFrame(frameDoc);
+    if (cssChanged) {
+      style.textContent = previewCss;
+    }
+    if (htmlChanged) {
+      content.innerHTML = html;
+      renderMathInFrame(frameDoc);
+    }
+    rememberWritten();
   } catch {
     // Cross-origin / unexpected frame state: fall back to a full rebuild.
     previewIframe.srcdoc = doc();
+    rememberWritten();
   }
   syncGutterVisibility();
 }
@@ -840,25 +845,40 @@ function setDirty(v: boolean) {
 }
 
 async function loadContent(path: string, content: string) {
+  renderScheduler.cancel();
   currentFile = path;
   lastTocSignature = '';
   tocRoots = [];
-  // Dispatch first: the updateListener fires synchronously on docChanged and
-  // would otherwise re-mark the freshly loaded file as dirty.
-  cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: content } });
+  isLoading = true;
+  try {
+    // Programmatic replacement must not look like user editing to the
+    // listener; the explicit refresh below is the single render for it.
+    cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: content } });
+  } finally {
+    isLoading = false;
+  }
   setDirty(false);
   setTitle(baseName(path));
   statusEl.textContent = 'Ready';
   await refreshPreview();
 }
 
+async function openPath(path: string) {
+  try {
+    if (!(await confirmDiscard())) return;
+    const content = await LoadFile(path);
+    await loadContent(path, content);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Open failed';
+  }
+}
+
 async function openFile() {
   try {
     const path = await OpenFileDialog();
     if (!path) return;
-    const content = await LoadFile(path);
-    if (!(await confirmDiscard())) return;
-    await loadContent(path, content);
+    await openPath(path);
   } catch (err) {
     console.error(err);
     statusEl.textContent = 'Open failed';
@@ -890,10 +910,16 @@ async function saveCurrent(): Promise<boolean> {
 async function newFile() {
   const ok = await confirmDiscard();
   if (!ok) return;
+  renderScheduler.cancel();
   currentFile = '';
   lastTocSignature = '';
   tocRoots = [];
-  cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: '' } });
+  isLoading = true;
+  try {
+    cm.dispatch({ changes: { from: 0, to: cm.state.doc.length, insert: '' } });
+  } finally {
+    isLoading = false;
+  }
   setDirty(false);
   setTitle('untitled');
   statusEl.textContent = 'Ready';
@@ -1134,10 +1160,7 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
 const onDrop = (x: number, y: number, paths: string[]) => {
   const p = paths.find((q) => /\.(md|markdown|mdown|txt)$/i.test(q));
   if (!p) return;
-  void LoadFile(p).then(async (content) => {
-    if (!(await confirmDiscard())) return;
-    await loadContent(p, content);
-  });
+  void openPath(p);
 };
 
 // OnFileDrop is available in the production runtime; guard so a missing API
@@ -1155,7 +1178,7 @@ async function init() {
   void syncMaximisedState();
   try {
     const s = await GetSettings();
-    applyTheme(s.Theme === 'light' ? 'light' : 'dark');
+    applyTheme(s.Theme === 'light' ? 'light' : 'dark', false);
     applyWrap(s.Wrap !== false);
     currentPreviewFont = s.PreviewFont || DEFAULT_PREVIEW_FONT;
     if (setWrapInput) setWrapInput.checked = (s.Wrap !== false);
@@ -1163,7 +1186,7 @@ async function init() {
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
   } catch (err) {
     console.error('init: settings failed', err);
-    applyTheme('dark');
+    applyTheme('dark', false);
     applyWrap(true);
     currentPreviewFont = DEFAULT_PREVIEW_FONT;
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;

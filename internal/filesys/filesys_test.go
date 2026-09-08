@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,69 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	}
 	if got != content {
 		t.Fatalf("round trip mismatch:\nwant %q\n got %q", content, got)
+	}
+}
+
+// TestWriteFileAtomic verifies complete writes, permission inheritance, and
+// cleanup when the final replacement cannot be committed.
+func TestWriteFileAtomic(t *testing.T) {
+	dir := t.TempDir()
+
+	newPath := filepath.Join(dir, "new.md")
+	if err := WriteFile(newPath, "new content"); err != nil {
+		t.Fatalf("write new file: %v", err)
+	}
+	got, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatalf("read new file: %v", err)
+	}
+	if string(got) != "new content" {
+		t.Fatalf("new content = %q, want %q", got, "new content")
+	}
+
+	existing := filepath.Join(dir, "existing.md")
+	if err := os.WriteFile(existing, []byte("old content"), 0o600); err != nil {
+		t.Fatalf("write old file: %v", err)
+	}
+	if err := os.Chmod(existing, 0o600); err != nil {
+		t.Fatalf("chmod old file: %v", err)
+	}
+	if err := WriteFile(existing, "replacement"); err != nil {
+		t.Fatalf("replace existing file: %v", err)
+	}
+	got, err = os.ReadFile(existing)
+	if err != nil {
+		t.Fatalf("read existing file: %v", err)
+	}
+	if string(got) != "replacement" {
+		t.Fatalf("replacement content = %q, want %q", got, "replacement")
+	}
+	info, err := os.Stat(existing)
+	if err != nil {
+		t.Fatalf("stat existing file: %v", err)
+	}
+	if gotMode := info.Mode().Perm(); gotMode != 0o600 {
+		t.Fatalf("replacement mode = %o, want %o", gotMode, 0o600)
+	}
+
+	occupied := filepath.Join(dir, "occupied")
+	if err := os.Mkdir(occupied, 0o755); err != nil {
+		t.Fatalf("mkdir occupied target: %v", err)
+	}
+	if err := WriteFile(occupied, "must not replace directory"); err == nil {
+		t.Fatal("WriteFile unexpectedly replaced a directory")
+	}
+	if _, err := os.Stat(occupied); err != nil {
+		t.Fatalf("failed replacement removed target: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read temp directory: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".mado-") {
+			t.Fatalf("temporary file left behind: %s", entry.Name())
+		}
 	}
 }
 

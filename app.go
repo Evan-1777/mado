@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -18,6 +19,7 @@ import (
 // App is the root Wails-bound application object. All exported methods are
 // exposed to the frontend.
 type App struct {
+	mu       sync.RWMutex
 	ctx      context.Context
 	settings settings.Settings
 	// saveSettings persists preferences. Tests override it to inject a
@@ -77,13 +79,19 @@ func (a *App) LoadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	a.recordLastFile(path)
+	a.SetTitle(filepath.Base(path))
+	return content, nil
+}
+
+func (a *App) recordLastFile(path string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	setLastFile := a.setLastFile
 	if setLastFile == nil {
 		setLastFile = filesys.SetLastFile
 	}
 	_ = setLastFile(path)
-	a.SetTitle(filepath.Base(path))
-	return content, nil
 }
 
 // SaveFile writes content to path and records the path as last-opened.
@@ -91,28 +99,33 @@ func (a *App) SaveFile(path, content string) error {
 	if err := filesys.WriteFile(path, content); err != nil {
 		return err
 	}
-	setLastFile := a.setLastFile
-	if setLastFile == nil {
-		setLastFile = filesys.SetLastFile
-	}
-	_ = setLastFile(path)
+	a.recordLastFile(path)
 	a.SetTitle(filepath.Base(path))
 	return nil
 }
 
 // Render converts Markdown source to safe HTML for the preview pane.
 func (a *App) Render(md string) (string, error) {
-	return mdrender.Render(md, a.settings.Math)
+	a.mu.RLock()
+	math := a.settings.Math
+	a.mu.RUnlock()
+	return mdrender.Render(md, math)
 }
 
 // GetCSS returns the composed preview stylesheet for the active theme and
 // preview font.
 func (a *App) GetCSS() (string, error) {
-	return theme.ThemeCSS(a.settings.Theme, a.settings.PreviewFont)
+	a.mu.RLock()
+	themeName := a.settings.Theme
+	font := a.settings.PreviewFont
+	a.mu.RUnlock()
+	return theme.ThemeCSS(themeName, font)
 }
 
 // GetSettings returns the active persisted settings.
 func (a *App) GetSettings() (settings.Settings, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return a.settings, nil
 }
 
@@ -121,6 +134,9 @@ func (a *App) GetSettings() (settings.Settings, error) {
 // in-memory settings untouched and GetCSS/GetSettings stay consistent with
 // what is actually on disk.
 func (a *App) persist(mutate func(*settings.Settings)) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	save := a.saveSettings
 	if save == nil {
 		save = settings.Save
@@ -197,13 +213,25 @@ func (a *App) GetStartupFile() string {
 // OnBeforeClose so that closing only asks for confirmation when changes
 // would be lost.
 func (a *App) SetDirty(dirty bool) {
+	a.mu.Lock()
 	a.dirty = dirty
+	a.mu.Unlock()
+}
+
+// shouldPreventClose returns one consistent snapshot for the synchronous
+// Wails close hook.
+func (a *App) shouldPreventClose() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return !a.quitting && a.dirty
 }
 
 // ForceQuit exits without any prompt. The quitting flag makes the
 // OnBeforeClose hook allow the close instead of re-emitting request-close.
 func (a *App) ForceQuit() {
+	a.mu.Lock()
 	a.quitting = true
+	a.mu.Unlock()
 	runtime.Quit(a.ctx)
 }
 

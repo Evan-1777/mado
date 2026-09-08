@@ -67,6 +67,51 @@ func TestRenderRemovesScriptTags(t *testing.T) {
 	}
 }
 
+// TestSanitizeMetaRefresh verifies refresh navigation is removed without
+// changing ordinary meta tags, escaped code, or existing script stripping.
+func TestSanitizeMetaRefresh(t *testing.T) {
+	removed := []string{
+		`<meta http-equiv="refresh" content="0;url=https://evil.test">`,
+		`<meta content="x > y" http-equiv="refresh">`,
+		`<META CONTENT='1;url=https://evil.test' HTTP-EQUIV = ' ReFrEsH ' />`,
+		"<meta\n  http-equiv = \"refresh\"\n  content = \"0\">",
+	}
+	for _, src := range removed {
+		out, err := Render(src, false)
+		if err != nil {
+			t.Fatalf("render %q: %v", src, err)
+		}
+		if contains(out, "http-equiv") || contains(out, "evil.test") {
+			t.Errorf("refresh meta was not removed: source %q output %q", src, out)
+		}
+	}
+
+	preserved := `<meta charset="utf-8"><meta http-equiv="refresh-policy" content="strict">`
+	out, err := Render(preserved, false)
+	if err != nil {
+		t.Fatalf("render preserved meta: %v", err)
+	}
+	if !contains(out, `<meta charset="utf-8">`) || !contains(out, `http-equiv="refresh-policy"`) {
+		t.Fatalf("ordinary meta tags changed: %q", out)
+	}
+
+	code, err := Render("```html\n<meta http-equiv=\"refresh\" content=\"0\">\n```", false)
+	if err != nil {
+		t.Fatalf("render code meta: %v", err)
+	}
+	if !contains(code, "&lt;") || !contains(code, "refresh") {
+		t.Fatalf("escaped code meta was stripped: %q", code)
+	}
+
+	script, err := Render(`<script>alert(1)</script><kbd>Ctrl</kbd>`, false)
+	if err != nil {
+		t.Fatalf("render script regression: %v", err)
+	}
+	if contains(script, "<script") || !contains(script, "<kbd>Ctrl</kbd>") {
+		t.Fatalf("script sanitization regressed: %q", script)
+	}
+}
+
 // TestRenderCodeFence verifies fenced code blocks get highlighted with classes.
 func TestRenderCodeFence(t *testing.T) {
 	out, err := Render("```go\nfunc main() {}\n```", false)

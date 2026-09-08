@@ -67,8 +67,6 @@ func NewMathBlock() *MathBlock {
 
 type mathInlineParser struct{}
 
-var defaultMathInlineParser = &mathInlineParser{}
-
 func (s *mathInlineParser) Trigger() []byte {
 	return []byte{'$'}
 }
@@ -142,8 +140,6 @@ func (s *mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.C
 // --- Block parser ---
 
 type mathBlockParser struct{}
-
-var defaultMathBlockParser = &mathBlockParser{}
 
 type mathBlockData struct {
 	closed bool
@@ -248,9 +244,7 @@ type mathHTMLRenderer struct {
 	htmlrenderer.Config
 }
 
-var defaultMathHTMLRenderer = &mathHTMLRenderer{
-	Config: htmlrenderer.NewConfig(),
-}
+var _ renderer.NodeRenderer = (*mathHTMLRenderer)(nil)
 
 func (r *mathHTMLRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(KindMathInline, r.renderMathInline)
@@ -296,17 +290,20 @@ type mathExtension struct{}
 var MathExtension = &mathExtension{}
 
 func (e *mathExtension) Extend(m goldmark.Markdown) {
+	blockParser := &mathBlockParser{}
+	inlineParser := &mathInlineParser{}
+	htmlRenderer := &mathHTMLRenderer{Config: htmlrenderer.NewConfig()}
 	m.Parser().AddOptions(
 		parser.WithBlockParsers(
-			util.Prioritized(defaultMathBlockParser, 500),
+			util.Prioritized(blockParser, 500),
 		),
 		parser.WithInlineParsers(
-			util.Prioritized(defaultMathInlineParser, 500),
+			util.Prioritized(inlineParser, 500),
 		),
 	)
 	m.Renderer().AddOptions(
 		renderer.WithNodeRenderers(
-			util.Prioritized(defaultMathHTMLRenderer, 500),
+			util.Prioritized(htmlRenderer, 500),
 		),
 	)
 }

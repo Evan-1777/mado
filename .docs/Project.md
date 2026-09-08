@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.7：无文件启动改为空白新文档、启动路径收敛完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.7：启动/性能/安全治理完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -41,24 +41,24 @@
   - **本机验证链**（最小占用，产物均 gitignored）：
     1. `cd frontend && npm install --include=dev`（★ 本环境 `NODE_ENV=production` 且 `omit=dev`，不加 `--include=dev` 会跳过 esbuild）
     2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`（stdout 丢弃；★ 必须带 `--loader:.css=empty`，否则 `import './style.css'` 直接报错，`--outfile=/dev/null` 会遗留字面文件 `nul.css`）
-    3. `npm run build` 产出 `dist/`（go:embed 依赖；实测约 3.2MB，KaTeX 样式与字体占大头）
+    3. `npm run build` 产出 `dist/`（go:embed 依赖；当前实测约 2.4MB，KaTeX 样式与 woff2 字体占大头）
     4. `go vet ./...` + `go test ./...`
   - **云端 CI**：`.github/workflows/build.yml`（GitHub Actions windows-latest：setup-go 1.25 + Node 22（npm 缓存）+ wails CLI v2.14.0 → 前端 npm 构建 → `go test ./...` → `wails build` → 上传 `mado.exe` artifact）。**发布**：`.github/workflows/release.yml`（tag `v*` 推送或手动触发（可填版本号 input）→ 同一构建链 → 校验版本号格式 → `gh release create`）。验收以云端 workflow 结果为准
-- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts`、`tests/gutter.test.ts` 与 `tests/tocGutter.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`；lastfile 失败路径由 `TestLastFileFailureIsBestEffort` 覆盖，目录映射由 `tests/tocGutter.test.ts` 覆盖。
+- **如何测试**：`go test ./...`（5 个包/目录：根包/filesys/mdrender/settings/theme）；并发与竞态回归用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次跑 `tests/fontCommit.test.ts`、`tests/gutter.test.ts`、`tests/tocGutter.test.ts` 与 `tests/renderScheduler.test.ts`，Node 原生 type-stripping，无测试框架；CI 用 Node 22，需 ≥22.6）；dev-only 无头检查运行 `npm run build && node tests/modeScroll.check.mjs` 与 `node tests/startup.check.mjs`，可用 `CHROME_BIN` 覆盖浏览器路径，不接入 npm test/CI；无 GUI 测试框架，交互行为手动验证。★ 测试不污染真实环境：settings/filesys 经包级 `storePath` 变量覆写隔离到 `t.TempDir()`；根包（App 层）不覆写 `storePath`（它对 main 包不可见），保存失败场景改用 `App.saveSettings` 函数字段注入，启动副作用用例（`TestStartupCreatesNoWelcomeDoc`）用 `t.Setenv` 同设 `APPDATA` + `XDG_CONFIG_HOME` 隔离 `os.UserConfigDir()`；lastfile 失败路径由 `TestLastFileFailureIsBestEffort` 覆盖，目录映射由 `tests/tocGutter.test.ts` 覆盖。
 
 ## 3. 目录结构与模块职责
 
 ```
 go.mod / go.sum          # Go 依赖（goldmark、wails v2、chroma 等）
 main.go                  # Wails 入口：窗口配置（1280×800、Frameless、OnBeforeClose、前端拖放运行时开关）
-main_test.go             # 根包测试：旧存储迁移 + 启动副作用（不写用户配置目录）
-app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等
+main_test.go             # 根包测试：旧存储迁移、启动副作用、并发绑定与状态一致性
+app.go                   # App 绑定对象：LoadFile/SaveFile/Render/GetCSS/GetSettings/SetTheme/SetWrap/SetMath/SetPreviewFont 等；读写锁守护设置/脏/退出状态
 wails.json               # Wails 项目配置（frontend:dir、install/build 命令）
-internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；无读取方，见 §9）
-internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go）+ 源行号锚点（srcline.go）
+internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；文档保存使用同目录临时文件原子替换；无读取方，见 §9）
+internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go，渲染器按引擎实例化）+ 源行号锚点（srcline.go）+ script/meta refresh 净化
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
 internal/theme/          # 亮/暗设计令牌 CSS，go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
-frontend/                # 前端：src/main.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；tests/ 为 Node 原生自检；构建产物 dist/（app.js/app.css/index.html/katex/）
+frontend/                # 前端：src/main.ts + src/renderScheduler.ts + src/fontCommit.ts + src/gutter.ts + src/style.css + index.html；tests/ 为 Node 原生自检与 dev-only 无头检查；构建产物 dist/（app.js/app.css/index.html/katex/，字体仅 woff2）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
 build/bin/mado.exe       # 打包输出（云端 CI 产物，体积以实际为准）
@@ -71,10 +71,10 @@ docs/                    # 用户文档
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
   - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
-  - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功后才切换
+  - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功并解锁后才切换；App 的 `sync.RWMutex` 守护设置、dirty 与 quitting，`Render/GetCSS/GetSettings` 在锁内取快照，`main.go` 通过 `shouldPreventClose()` 读取关闭快照，偏好与 lastfile 的共享 JSON 写入在同一进程内串行化
 - **数据流**：
-  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
-  - 编辑：CodeMirror updateListener（100ms debounce + 80ms 节流）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地替换 style 文本与 article innerHTML 并调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
+  - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；初始化主题仅应用界面状态、不触发预览，加载/新建在清空旧 timer 并抑制文档监听副作用后显式渲染一次；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
+  - 编辑：CodeMirror updateListener（尾随 80ms 节流；pending timer 合并，程序性替换先 `cancel()`）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地更新发生变化的 style 文本或 article innerHTML，并仅在 HTML 变化时调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `Preview font rejected`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
   - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
@@ -83,8 +83,8 @@ docs/                    # 用户文档
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
   - 关闭（双路径统一）：自定义关闭钮 → 前端 `requestClose()`（非 dirty 直接 `ForceQuit`）；Alt+F4/任务栏 → Go `OnBeforeClose`（dirty 且未 quitting 时 emit `request-close` 阻止关闭）。前端 `handleCloseFlow()`（`closePending` guard 防重入）弹应用内 `<dialog id="close-dialog">` 三键模态（是/否/取消，Esc=取消，`askUnsaved()` 返回 Promise）→「是」保存（无路径先 `SaveFileDialog` 另存）后 `ForceQuit`；「否」直接 `ForceQuit`；取消不动。新建文件流程的 `confirmDiscard()` 复用同一模态。`quitting` 标志防 OnBeforeClose 二次拦截
-  - 拖放：`main.go` 通过 `DragAndDrop.EnableFileDrop` 开启文件路径事件，前端以 `OnFileDrop(onDrop, false)` 接收全窗口拖放；回调筛选 Markdown 文件，并在载入前复用 `confirmDiscard()` 检查未保存修改
-  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 写盘 + best-effort `SetLastFile` + 窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
+  - 拖放：`main.go` 通过 `DragAndDrop.EnableFileDrop` 开启文件路径事件，前端以 `OnFileDrop(onDrop, false)` 接收全窗口拖放；回调筛选 Markdown 文件，打开与拖放统一进入 `openPath()`，先复用 `confirmDiscard()` 再读取，读取失败统一捕获并提示 `Open failed`
+  - 保存：`Ctrl+S` → `SaveFile(path, content)` → 同目录临时文件写入、继承原权限、`Sync()`、关闭后改名替换，再 best-effort `SetLastFile` 与窗口标题联动；未命名文档弹 `SaveFileDialog` 另存
 - **模块依赖**：
   - `internal/*` 禁止互相依赖（filesys/settings 仅通过共享 JSON 文件松耦合，禁止 import 对方）
   - `main.go`/`app.go` 是唯一允许 import internal 的包
@@ -106,11 +106,11 @@ docs/                    # 用户文档
 - 「`frontend/dist/` 是 go:embed 的 FS 根——原因：`main.go` 用 `//go:embed all:frontend/dist`，HTML 内引用资源必须写 `./app.js`/`./app.css` 而非 `./dist/app.js`」——此为 v1 打包期真实踩坑，修复后写死约定
 - 「`frontend/wailsjs/` 由 wails 自动生成，禁止手改——原因：每次 wails dev/build 会重新生成覆盖」
 - 「`frontend/dist/` 构建产物禁止提交——原因：每次 npm run build 全量重建，且 go:embed 编译时读取」
-- 「goldmark 引擎在 Render 中每次新建——原因：goldmark 实例非并发安全，创建成本 <10µs 可忽略」
+- 「goldmark 引擎在 Render 中每次新建，数学扩展的 parser/renderer 也按引擎实例化——原因：goldmark 与 renderer 的初始化状态不可跨并发调用共享；创建成本低于引入全局锁，保证 Wails 并发 Render 不产生数据竞争」
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
 - 「模式切换隐藏预览列（`display: none`）会重置 iframe 文档滚动——原因：display:none 销毁 iframe 视口，`scrollingElement.scrollTop` 立即归零且隐藏状态下写回被钳制为 0 无效；而普通 overflow 容器（编辑器 `.cm-scroller`）在同样的显隐往返中原样保留偏移，造成"editor 不丢、preview 丢"。修复：模式切换 handler 在改类前捕获 `scrollTop`，类切换完成、预览列重新显示后再写回并清空（2026-08-31 修复）」
-- 「模式切换写回与平滑跳转/编辑刷新存在极窄竞态窗口（已知限制）——原因：TOC/行号跳转的 `scrollIntoView({behavior:'smooth'})` 动画与编辑后 100ms 防抖在途刷新（异常回退走 srcdoc 整页重建、加载完成滚动归零）都可能在写回之后继续改变 scrollTop；触发需「跳转/编辑后数百 ms 内切模式 + 恰逢重建」叠加，普通原地更新路径浏览器天然保留偏移、写回无害，2026-09-02 评估后接受不治本。若将来需要：写回推迟到下一帧（rAF）并在写入前校验文档版本」
+- 「模式切换写回与平滑跳转/编辑刷新存在极窄竞态窗口（已知限制）——原因：TOC/行号跳转的 `scrollIntoView({behavior:'smooth'})` 动画与编辑后尾随 80ms 节流在途刷新（异常回退走 srcdoc 整页重建、加载完成滚动归零）都可能在写回之后继续改变 scrollTop；触发需「跳转/编辑后数百 ms 内切模式 + 恰逢重建」叠加，普通原地更新路径浏览器天然保留偏移、写回无害，2026-09-02 评估后接受不治本。若将来需要：写回推迟到下一帧（rAF）并在写入前校验文档版本」
 - 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏或无响应——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档会被替换；即使阻断导航，goldmark 仍会将中文 href fragment 百分号编码，而标题 DOM id 保持 Unicode，直接 `getElementById(href.slice(1))` 查不到。修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），所有链接 preventDefault；fragment 先 `decodeURIComponent`（畸形编码回退原值）再 getElementById + scrollIntoView；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
 - 「Wails v2 Windows 无边框窗口右/下边缘无法缩放——原因：1. Wails 内置 JS 用 `outerWidth` 判定边缘在 WebView2 下受不可见边框偏差影响恒不成立且会重置光标；2. 右侧与右下角存在 iframe/编辑器原生滚动条（15~17px），Chromium 滚动条不向 DOM 分发事件并在近边缘时触发 mouseleave，使纯坐标计算检测失效。修复：通过 `Object.defineProperty` 永久锁定 `window.wails.flags.enableResize = false`，并在顶层 DOM 挂载 8 方向固定把手层（`z-index: 100000`），四角 10px / 四边 6px 穿透覆盖滚动条，`mousedown` 直接 `WailsInvoke("resize:" + edge)`，最大化状态下自适应隐藏（2026-08-18 深度修复）」
 - 「多实例限制：应用已运行时再双击关联文件会启动第二个实例——原因：Wails v2 默认多实例，未启用 SingleInstance；已知限制，待后续需要时启用 SingleInstance + OnSecondInstanceLaunch 传递路径」
@@ -137,6 +137,13 @@ docs/                    # 用户文档
 - 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
+- 「文档保存采用同目录临时文件 + 原文件权限 + `Sync()` + `Rename` 的最佳努力替换」——原因：写入、刷盘或改名失败时清理临时文件并保留旧目标；不宣称 Windows 与底层文件系统具备跨平台绝对断电原子性
+- 「App 绑定状态由单一 `sync.RWMutex` 守护，关闭回调只能调用 `shouldPreventClose()` 快照，共享 JSON 的 settings/lastfile 写路径在进程内串行化」——原因：Wails 绑定运行在独立 goroutine；跨进程多实例竞争仍是已接受边界
+- 「渲染输出剥离 `http-equiv` 值为 refresh 的 meta 标签」——原因：sandbox 允许帧自导航，meta refresh 不经过父侧 click 拦截；净化器按引号边界识别完整标签，保留 `refresh-policy` 与代码块中的转义文本
+- 「打开与拖放统一经 `openPath()`，未保存确认发生在 `LoadFile` 之前；读取失败由状态栏显示 `Open failed`」——原因：避免取消确认后标题/lastfile 已产生副作用，并消除拖放 Promise rejection 静默失败；选中文件后先弹确认再暴露读取错误是已接受取舍
+- 「KaTeX 构建产物仅复制源目录中的 `.woff2`，复制前清空目标字体目录并按源目录动态对照」——原因：WebView2/Chromium 使用 woff2，删除 ttf/woff 减少嵌入体积，动态对照避免绑定 KaTeX 补丁版本
+- 「安全审查接受内联 on* 与 `javascript:` 链接由 sandbox + 父侧全链接拦截双重阻断；远程图片/追踪像素与 `<base href>` 保持默认 HTML 语义；settings.json 非原子写失败回退默认值；跨进程多实例共享配置竞争不处理」——原因：CSP 或额外 HTML 过滤会破坏默认 HTML/远程图片语义，相关治理超出本阶段边界
+
 ## 7. 外部依赖与集成
 
 - **运行时依赖**：系统 Edge WebView2 Runtime（Wails 硬依赖，Windows 10/11 自带；目标平台）
@@ -144,6 +151,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-05 本阶段采用单一尾随 80ms 节流调度器（pending timer 合并，提供 `cancel()`）替代防抖与失效节流叠加；初始化主题只改 UI 状态，程序性文档替换取消旧 timer、抑制 dirty/排程并显式渲染一次；预览 HTML/CSS 独立比较后按变化写入；打开与拖放统一经 `openPath()` 在确认后读取并统一反馈错误；理由是保持单次启动渲染、连续输入可及时更新、主题切换不重建正文。同期采用 App 单一读写锁与关闭快照、同目录临时文件权限继承 + Sync + Rename 的安全保存、meta refresh 精准剥离、KaTeX 字体 woff2-only 动态对照。未采用 Windows 专用原子替换 API、KaTeX 懒加载、预览增量 DOM 架构或 CSP：前者增加平台条件代码，后三者分别扩大加载/状态管理、重构范围或破坏默认 HTML/远程图片语义
 - 2026-09-02 历史遗留问题批判性修复采用最短有效差分：拖放改用 `OnFileDrop(onDrop, false)` 关闭 drop-target 限制；打开与拖放在读取成功后、替换编辑内容前复用 `confirmDiscard()`；lastfile 记录改为 best-effort，不阻断读写主流程；节流回调更新时间戳使 80ms 节流生效；TOC 预览跳转改用渲染块 `data-line`，移除易错的标题序号映射；删除无调用方的 Go 拖放绑定、`title` 事件与 `StripScripts` 死代码；mathCache 在写入前超过 500 项时清空；CI 前端安装统一使用 `npm ci`。历史归档目录 `08-16-v4`、`08-16-v5`、`08-24-v2`、`08-29-v1` 的缺件保留为已知豁免，不伪造缺失的 Plan.md；后续归档继续执行 Plan.md 与 Tasks.md 双文件校验。
 - 2026-08-31 预览滚动跨模式切换保持采用模式切换 handler 单点保存/恢复（隐藏前捕获 `savedPreviewScroll`、类切换完成后写回），而非改用 `visibility` 等不销毁视口的隐藏方式——理由：该 handler 是唯一改变 `editor-only`/`preview-only` 类的入口，单点即根因处，最短有效差分；写回必须在列重新显示后执行（隐藏状态下写 `scrollTop` 被钳制为 0，实测无效）；编辑器侧不动（浏览器对普通溢出容器天然保留偏移）
 - 2026-08-31 新增 dev-only 无头 Chrome 回归检查 `frontend/tests/modeScroll.check.mjs`（内存 http 服务 + Wails 桩 + 真实 dist，驱动模式 tab 断言 4 个切换 cycle 的滚动保留），不接入 `npm test`/CI——理由：该 bug 的机械复现需要真实浏览器对 iframe 视口的语义，纯 Node 无法模拟；CI 为 windows-latest，依赖不保证的 Chrome 与无头行为会破坏构建链，符合项目零依赖自检约定（运行前置：`npm run build` 产 dist）
@@ -179,7 +187,7 @@ docs/                    # 用户文档
 - 2026-08-15 包管理器 pnpm → npm（本地与 CI 一致切换）——理由：新开发环境无 pnpm，统一链路避免双锁文件漂移
 - 2026-08-14 关闭确认采用「Go emit request-close → 前端统一处理」而非 Go 同步弹窗——理由：保存需编辑器内容（仅前端持有），旧双弹窗链路（QuitApp→Quit→OnBeforeClose→quitConfirm 二次弹窗且默认取消）导致「点确认关不掉」
 - 2026-08-15 关闭确认改用前端原生 `<dialog>` 模态（`askUnsaved()`）而非修复 Go 侧英文返回值映射——理由：wails v2 Windows `MessageDialog` 恒为 MB_YESNO 两键（无取消/X/Esc，误触关闭只能存或丢，有数据丢失风险）且返回英文串曾致中文匹配失效；`<dialog>` 在 WebView2 原生支持 Esc/焦点囚禁/顶层叠放，三态完整，新建流程复用同一组件
-- 2026-08-14 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
+- 2026-08-14 原始 Go 侧防抖合并（100ms debounce + 80ms 节流）而非前端逐击解析——理由：打字高峰帧率平稳
 - 2026-08-24 Preview 字体输入边界在 Go 侧统一校验（normalize + 拒绝控制字符/结构分隔符/超长值）并由 theme 层二次转义后用双引号包裹注入 CSS 变量——理由：settings.json 与 Wails 绑定都是信任边界，仅靠前端校验可被绕过；字体名以 `--preview-font` 变量 + 固定回退栈注入，用户字体缺失时自动退化，不探测、不安装
 - 2026-08-14 字体用本地栈（Cascadia Code/Consolas）而非网络字体——理由：离线可用、无 FOUT
 

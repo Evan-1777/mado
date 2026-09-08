@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs');fs.copyFileSync('index.html','dist/index.html');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\"",
-    "dev": "node -e \"const fs=require('fs');fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');fs.cpSync('node_modules/katex/dist/fonts','dist/katex/fonts',{recursive:true})\" && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
-    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts"
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && node -e \"const fs=require('fs');fs.copyFileSync('index.html','dist/index.html');fs.rmSync('dist/katex/fonts',{recursive:true,force:true});fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');for(const f of fs.readdirSync('node_modules/katex/dist/fonts'))if(f.endsWith('.woff2'))fs.copyFileSync('node_modules/katex/dist/fonts/'+f,'dist/katex/fonts/'+f)\"",
+    "dev": "node -e \"const fs=require('fs');fs.rmSync('dist/katex/fonts',{recursive:true,force:true});fs.mkdirSync('dist/katex/fonts',{recursive:true});fs.copyFileSync('node_modules/katex/dist/katex.min.css','dist/katex/katex.min.css');for(const f of fs.readdirSync('node_modules/katex/dist/fonts'))if(f.endsWith('.woff2'))fs.copyFileSync('node_modules/katex/dist/fonts/'+f,'dist/katex/fonts/'+f)\" && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
+    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts && node tests/renderScheduler.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

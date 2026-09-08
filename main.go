@@ -38,7 +38,7 @@ func main() {
 			// Clean state or an already-confirmed quit closes directly; a dirty
 			// editor forwards the decision to the frontend via request-close,
 			// which saves (content lives in CodeMirror) and then ForceQuits.
-			if app.quitting || !app.dirty {
+			if !app.shouldPreventClose() {
 				return false
 			}
 			runtime.EventsEmit(ctx, "request-close")

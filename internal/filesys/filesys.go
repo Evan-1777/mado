@@ -3,6 +3,8 @@ package filesys
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -32,10 +34,49 @@ func ReadFile(path string) (string, error) {
 	return string(b), nil
 }
 
-// WriteFile writes content to path, returning an error on failure
-// (permissions, disk full, ...).
+// WriteFile writes content to path through a same-directory temporary file.
+// The old target is left untouched until the complete replacement is ready.
 func WriteFile(path, content string) error {
-	return os.WriteFile(path, []byte(content), 0o644)
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".mado-*")
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
+
+	if err := tmp.Chmod(mode); err != nil {
+		return err
+	}
+	written, err := tmp.Write([]byte(content))
+	if err != nil {
+		return err
+	}
+	if written != len(content) {
+		return io.ErrShortWrite
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // SetLastFile persists the last-opened file path into the shared JSON store.

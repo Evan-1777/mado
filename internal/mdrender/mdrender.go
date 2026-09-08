@@ -80,7 +80,23 @@ func dataLine(attr highlighting.ImmutableAttributes) (string, bool) {
 // scriptRe matches <script ...> and </script> tags (case-insensitive,
 // attributes optional, no nesting in HTML). Used to strip executable JS
 // while keeping other raw HTML like <kbd>/<div>.
-var scriptRe = regexp.MustCompile(`(?is)<\s*/?\s*script\b[^>]*>`)
+var scriptRe = regexp.MustCompile(`(?is)<\s*/?\s*script\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
+
+// metaTagRe finds a complete meta tag without treating a > inside a quoted
+// attribute as the end of the tag. refreshAttrRe then checks the attribute
+// value separately so refresh-policy and similar values are preserved.
+var metaTagRe = regexp.MustCompile(`(?is)<\s*meta\b(?:[^>"']|"[^"]*"|'[^']*')*>`)
+var refreshAttrRe = regexp.MustCompile(`(?is)\s+http-equiv\s*=\s*(?:"\s*refresh\s*"|'\s*refresh\s*'|refresh(?:\s|/?>))`)
+
+func sanitizeHTML(html string) string {
+	html = scriptRe.ReplaceAllString(html, "")
+	return metaTagRe.ReplaceAllStringFunc(html, func(tag string) string {
+		if refreshAttrRe.MatchString(tag) {
+			return ""
+		}
+		return tag
+	})
+}
 
 // Render converts Markdown source to sanitized HTML.
 func Render(md string, math bool) (string, error) {
@@ -117,7 +133,7 @@ func Render(md string, math bool) (string, error) {
 	if err := engine.Convert([]byte(md), &buf, parser.WithContext(ctx)); err != nil {
 		return "", err
 	}
-	return scriptRe.ReplaceAllString(buf.String(), ""), nil
+	return sanitizeHTML(buf.String()), nil
 }
 
 // slugIDs generates heading ids in the common slug format: CJK characters

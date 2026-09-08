@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"mado/internal/settings"
 )
@@ -200,4 +203,95 @@ func TestPersistFailureKeepsState(t *testing.T) {
 			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
 		}
 	})
+}
+
+// TestConcurrentBindingsNoRace exercises the Wails-style concurrent binding
+// calls while the injected stores deliberately share one unsynchronized map.
+// The App write lock must serialize both store paths and state mutation.
+func TestConcurrentBindingsNoRace(t *testing.T) {
+	dir := t.TempDir()
+	loadPath := filepath.Join(dir, "load.md")
+	savePath := filepath.Join(dir, "save.md")
+	if err := os.WriteFile(loadPath, []byte("# loaded"), 0o644); err != nil {
+		t.Fatalf("write load fixture: %v", err)
+	}
+
+	shared := map[string]any{}
+	a := &App{
+		settings: settings.Default(),
+		saveSettings: func(s settings.Settings) error {
+			time.Sleep(time.Microsecond)
+			shared["settings"] = s
+			return nil
+		},
+		setLastFile: func(path string) error {
+			time.Sleep(time.Microsecond)
+			shared["lastfile"] = path
+			return nil
+		},
+	}
+
+	errs := make(chan error, 8*100)
+	var wg sync.WaitGroup
+	for worker := 0; worker < 8; worker++ {
+		worker := worker
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				switch (worker*100 + i) % 10 {
+				case 0:
+					_, err := a.Render("# heading")
+					if err != nil {
+						errs <- err
+					}
+				case 1:
+					_, err := a.GetCSS()
+					if err != nil {
+						errs <- err
+					}
+				case 2:
+					_, err := a.GetSettings()
+					if err != nil {
+						errs <- err
+					}
+				case 3:
+					if err := a.SetWrap(i%2 == 0); err != nil {
+						errs <- err
+					}
+				case 4:
+					if err := a.SetMath(i%2 == 0); err != nil {
+						errs <- err
+					}
+				case 5:
+					if err := a.SetPreviewFont("Fira Code"); err != nil {
+						errs <- err
+					}
+				case 6:
+					a.SetDirty(true)
+				case 7:
+					if _, err := a.LoadFile(loadPath); err != nil {
+						errs <- err
+					}
+				case 8:
+					if err := a.SaveFile(savePath, fmt.Sprintf("%d", i)); err != nil {
+						errs <- err
+					}
+				case 9:
+					_ = a.shouldPreventClose()
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent binding: %v", err)
+	}
+	if _, ok := shared["settings"]; !ok {
+		t.Fatal("concurrent settings writes did not complete")
+	}
+	if _, ok := shared["lastfile"]; !ok {
+		t.Fatal("concurrent lastfile writes did not complete")
+	}
 }
