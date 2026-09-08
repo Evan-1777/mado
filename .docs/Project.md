@@ -147,6 +147,7 @@ docs/                    # 用户文档
 - 「原生确认 dialog 每次 `showModal()` 前清空 `returnValue`，按钮结果读取 `form submitter.value`，`cancel/close` 处理非按钮关闭」——原因：HTMLDialogElement 会保留上一次关闭结果，取消后的陈旧值会污染下一次打开/拖放确认；提交事件不依赖无头环境的 close 事件时序
 - 「前端 build/dev 通过 `scripts/copy-assets.mjs` 共享 index、KaTeX CSS 与 woff2 复制逻辑」——原因：两条入口必须对称创建可运行的 dist 资源，删除重复内联命令以避免资产清单漂移
 - 「渲染调度器以 refresh Promise settle 作为尾随请求释放点」——原因：长文档渲染期间只保留最新请求，避免后端继续执行已过期 AST 工作；已开始的 Promise 不伪造取消，仍由 renderVersion 丢弃过期结果
+- 「Windows 下文件权限模式仅区分只读（0444）与可写（0666），且 MoveFileExW 不支持多线程向同一目标路径并发原子替换」——原因：NTFS/Go 运行时无 POSIX 0o600 模式位，断言已有文件权限继承需做跨平台区分；Windows 替换文件时目标处于锁定/删除等待状态，并发保存同一文件会触发 Access is denied，并发测试中各 worker 需采用独立保存路径隔离目标冲突
 
 ## 7. 外部依赖与集成
 
@@ -155,6 +156,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-08 修复 CI Windows 环境测试报错：`TestWriteFileAtomic` 中已有文件权限继承断言按平台区分（Windows 下常规可写文件 Perm 为 0o666，POSIX 下为 0o600）；`TestConcurrentBindingsNoRace` 为 8 个并发 worker 赋予独立保存路径（`save-%d.md`），消除了 Windows 下多 goroutine 调用 `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)` 向同一文件并发改名替换导致的 `Access is denied` 冲突，同时完整保留对 App 状态读写锁与共享 store 串行化的并发压测覆盖。
 - 2026-09-08 针对 09-08-v1 审计遗留问题采用最短结构修复：meta refresh 在完整标签内按引号状态解析属性并接受 HTML 空白/斜杠分隔；WriteFile 先解析符号链接真实目标，悬空链接失败且不降级为截断覆写；askUnsaved 每次打开清空 dialog returnValue；build/dev 共用 `copy-assets.mjs`；renderScheduler 以 Promise 完成做轻量背压并合并最新请求。未采用 AST 全量重写、跨目录临时文件或权限失败时直接写入：前者改变 raw HTML 语义，后两者分别破坏原子替换或失败不变性
 - 2026-09-05 本阶段采用单一尾随 80ms 节流调度器（pending timer 合并，提供 `cancel()`）替代防抖与失效节流叠加；初始化主题只改 UI 状态，程序性文档替换取消旧 timer、抑制 dirty/排程并显式渲染一次；预览 HTML/CSS 独立比较后按变化写入；打开与拖放统一经 `openPath()` 在确认后读取并统一反馈错误；理由是保持单次启动渲染、连续输入可及时更新、主题切换不重建正文。同期采用 App 单一读写锁与关闭快照、同目录临时文件权限继承 + Sync + Rename 的安全保存、meta refresh 精准剥离、KaTeX 字体 woff2-only 动态对照。未采用 Windows 专用原子替换 API、KaTeX 懒加载、预览增量 DOM 架构或 CSP：前者增加平台条件代码，后三者分别扩大加载/状态管理、重构范围或破坏默认 HTML/远程图片语义
 - 2026-09-02 历史遗留问题批判性修复采用最短有效差分：拖放改用 `OnFileDrop(onDrop, false)` 关闭 drop-target 限制；打开与拖放在读取成功后、替换编辑内容前复用 `confirmDiscard()`；lastfile 记录改为 best-effort，不阻断读写主流程；节流回调更新时间戳使 80ms 节流生效；TOC 预览跳转改用渲染块 `data-line`，移除易错的标题序号映射；删除无调用方的 Go 拖放绑定、`title` 事件与 `StripScripts` 死代码；mathCache 在写入前超过 500 项时清空；CI 前端安装统一使用 `npm ci`。历史归档目录 `08-16-v4`、`08-16-v5`、`08-24-v2`、`08-29-v1` 的缺件保留为已知豁免，不伪造缺失的 Plan.md；后续归档继续执行 Plan.md 与 Tasks.md 双文件校验。

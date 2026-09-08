@@ -211,7 +211,6 @@ func TestPersistFailureKeepsState(t *testing.T) {
 func TestConcurrentBindingsNoRace(t *testing.T) {
 	dir := t.TempDir()
 	loadPath := filepath.Join(dir, "load.md")
-	savePath := filepath.Join(dir, "save.md")
 	if err := os.WriteFile(loadPath, []byte("# loaded"), 0o644); err != nil {
 		t.Fatalf("write load fixture: %v", err)
 	}
@@ -238,6 +237,7 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			savePath := filepath.Join(dir, fmt.Sprintf("save-%d.md", worker))
 			for i := 0; i < 100; i++ {
 				switch (worker*100 + i) % 10 {
 				case 0:

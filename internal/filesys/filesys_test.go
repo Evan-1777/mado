@@ -58,6 +58,10 @@ func TestWriteFileAtomic(t *testing.T) {
 	if err := os.Chmod(existing, 0o600); err != nil {
 		t.Fatalf("chmod old file: %v", err)
 	}
+	wantMode := os.FileMode(0o600)
+	if runtime.GOOS == "windows" {
+		wantMode = 0o666
+	}
 	if err := WriteFile(existing, "replacement"); err != nil {
 		t.Fatalf("replace existing file: %v", err)
 	}
@@ -72,8 +76,8 @@ func TestWriteFileAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat existing file: %v", err)
 	}
-	if gotMode := info.Mode().Perm(); gotMode != 0o600 {
-		t.Fatalf("replacement mode = %o, want %o", gotMode, 0o600)
+	if gotMode := info.Mode().Perm(); gotMode != wantMode {
+		t.Fatalf("replacement mode = %o, want %o", gotMode, wantMode)
 	}
 
 	occupied := filepath.Join(dir, "occupied")
