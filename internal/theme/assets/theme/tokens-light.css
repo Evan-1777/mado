@@ -1,16 +1,16 @@
 /* mado theme tokens: light */
 :root {
-  --bg: #fbfbfa;
-  --fg: #34383f;
-  --muted: #8a8f98;
-  --border: #e6e8ec;
-  --accent: #3558d6;
-  --accent-soft: rgba(53, 88, 214, 0.08);
-  --code-bg: #f0f1f4;
-  --quote-bg: rgba(53, 88, 214, 0.05);
-  --quote-border: #c9d3f0;
-  --table-head: #f0f1f4;
-  --table-stripe: #f5f6f8;
-  --link: #3558d6;
-  --heading: #1d2127;
+  --bg: #ffffff;
+  --fg: #18181b;
+  --muted: #71717a;
+  --border: #e4e4e7;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --code-bg: #f4f4f5;
+  --quote-bg: #fafafa;
+  --quote-border: #a1a1aa;
+  --table-head: #f4f4f5;
+  --table-stripe: #fafafa;
+  --link: #2563eb;
+  --heading: #09090b;
 }

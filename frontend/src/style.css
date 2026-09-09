@@ -1,72 +1,124 @@
 /* ============ Mado design system ============
    Theme via CSS custom properties on :root[data-theme].
-   App shell colors (title bar + panes) are defined here;
-   the preview iframe gets its own stylesheet from Go (theme pkg).
+   App shell colors come from the Zinc scale defined here; the preview iframe
+   gets its own stylesheet from Go (theme pkg) built on the same token values.
+   Layers: L0 frame → chrome (titlebar/toolbar/sidebar) → pane (content).
    ============================================= */
 
 :root {
   color-scheme: dark;
-  --frame-bg: #0b0d12;
-  --chrome-bg: #0e1117;
-  --pane-bg: #0f1117;
-  --surface: #141824;
-  --surface-hover: #1a1f2e;
-  --text: #d7dbe4;
-  --text-dim: #8a91a3;
-  --border: #262b38;
-  --accent: #7aa2ff;
-  --accent-dim: rgba(122, 162, 255, 0.16);
-  --red: #ff6b6b;
-  --yellow: #f5c96b;
-  --green: #62d08b;
+
+  /* ---- raw palette: the only place a literal color is written ---- */
+  --zinc-50: #fafafa;
+  --zinc-100: #f4f4f5;
+  --zinc-200: #e4e4e7;
+  --zinc-300: #d4d4d8;
+  --zinc-400: #a1a1aa;
+  --zinc-500: #71717a;
+  --zinc-600: #52525b;
+  --zinc-700: #3f3f46;
+  --zinc-800: #27272a;
+  --zinc-900: #18181b;
+  --zinc-950: #09090b;
+  --blue-50: #eff6ff;
+  --blue-400: #60a5fa;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --red-50: #fef2f2;
+  --red-600: #dc2626;
+  --red-700: #b91c1c;
+  --success: #16a34a;
+
+  /* ---- elevation ---- */
+  --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-e2: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-e3: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-glass: 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* ---- geometry ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --titlebar-h: 44px;
-  --radius: 10px;
+  --toolbar-h: 40px;
+  --win-btn-w: 46px;
+  --toc-w: 256px;
+  --toc-w-collapsed: 40px;
+
+  /* ---- typography ---- */
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei UI", sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", "Segoe UI", monospace;
 
-  /* Outline / TOC color depth hierarchy (Dark) */
-  --toc-h1: #f8fafc;
-  --toc-h2: #d1d8e6;
-  --toc-h3: #a3adc2;
-  --toc-h4: #798399;
-  --toc-h5: #5b6478;
-  --toc-h6: #444c5e;
-  --toc-badge-h1-bg: rgba(122, 162, 255, 0.22);
-  --toc-badge-h1-color: #9cbaff;
-  --toc-badge-h2-bg: rgba(122, 162, 255, 0.12);
-  --toc-badge-h2-color: #7aa2ff;
-  --toc-badge-bg: rgba(255, 255, 255, 0.06);
-  --toc-badge-color: #8a91a3;
+  /* ---- semantic tokens: dark (default) ---- */
+  --frame-bg: var(--zinc-950);
+  --chrome-bg: var(--zinc-900);
+  --pane-bg: var(--zinc-950);
+  --surface: var(--zinc-900);
+  --surface-glass: rgba(24, 24, 27, 0.82);
+  --surface-hover: var(--zinc-800);
+  --text: var(--zinc-100);
+  --text-dim: var(--zinc-400);
+  --border: var(--zinc-800);
+  --accent: var(--blue-600);
+  --accent-soft: rgba(37, 99, 235, 0.18);
+  --accent-text: var(--blue-400);
+  --danger: var(--red-600);
+  --danger-strong: var(--red-700);
+  --backdrop: rgba(9, 9, 11, 0.6);
+
+  /* Outline / TOC color depth hierarchy (dark) */
+  --toc-h1: var(--zinc-50);
+  --toc-h2: var(--zinc-200);
+  --toc-h3: var(--zinc-300);
+  --toc-h4: var(--zinc-400);
+  --toc-h5: var(--zinc-500);
+  --toc-h6: var(--zinc-600);
+  --toc-badge-bg: var(--surface-hover);
+  --toc-badge-color: var(--text-dim);
+  --toc-badge-h1-bg: var(--accent-soft);
+  --toc-badge-h1-color: var(--accent-text);
+  --toc-badge-h2-bg: rgba(37, 99, 235, 0.1);
+  --toc-badge-h2-color: var(--accent-text);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --frame-bg: #e9eaee;
-  --chrome-bg: #f3f4f7;
-  --pane-bg: #fbfbfa;
-  --surface: #ffffff;
-  --surface-hover: #eceef3;
-  --text: #34383f;
-  --text-dim: #7d838e;
-  --border: #dde0e6;
-  --accent: #3558d6;
-  --accent-dim: rgba(53, 88, 214, 0.1);
-  --red: #d64545;
-  --yellow: #b98a2e;
-  --green: #2f9e5f;
 
-  /* Outline / TOC color depth hierarchy (Light) */
-  --toc-h1: #12141a;
-  --toc-h2: #323742;
-  --toc-h3: #565d6c;
-  --toc-h4: #788090;
-  --toc-h5: #99a2b3;
-  --toc-h6: #b5bcc8;
-  --toc-badge-h1-bg: rgba(53, 88, 214, 0.15);
-  --toc-badge-h1-color: #2646b8;
-  --toc-badge-h2-bg: rgba(53, 88, 214, 0.08);
-  --toc-badge-h2-color: #3558d6;
-  --toc-badge-bg: rgba(0, 0, 0, 0.05);
-  --toc-badge-color: #7d838e;
+  --shadow-e1: 0 1px 2px rgba(9, 9, 11, 0.06);
+  --shadow-e2: 0 4px 12px rgba(9, 9, 11, 0.08);
+  --shadow-e3: 0 16px 48px rgba(9, 9, 11, 0.18);
+  --shadow-glass: 0 24px 64px rgba(9, 9, 11, 0.22);
+
+  --frame-bg: var(--zinc-200);
+  --chrome-bg: var(--zinc-100);
+  --pane-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-glass: rgba(255, 255, 255, 0.86);
+  --surface-hover: var(--zinc-100);
+  --text: var(--zinc-900);
+  --text-dim: var(--zinc-500);
+  --border: var(--zinc-200);
+  --accent: var(--blue-600);
+  --accent-soft: var(--blue-50);
+  --accent-text: var(--blue-700);
+  --danger: var(--red-600);
+  --danger-strong: var(--red-700);
+  --backdrop: rgba(9, 9, 11, 0.32);
+
+  /* Outline / TOC color depth hierarchy (light) */
+  --toc-h1: var(--zinc-950);
+  --toc-h2: var(--zinc-800);
+  --toc-h3: var(--zinc-700);
+  --toc-h4: var(--zinc-600);
+  --toc-h5: var(--zinc-500);
+  --toc-h6: var(--zinc-400);
+  --toc-badge-bg: var(--zinc-100);
+  --toc-badge-color: var(--text-dim);
+  --toc-badge-h1-bg: var(--blue-50);
+  --toc-badge-h1-color: var(--blue-700);
+  --toc-badge-h2-bg: #ffffff;
+  --toc-badge-h2-color: var(--blue-600);
 }
 
 * {
@@ -82,7 +134,7 @@ body {
 }
 
 body {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 14px;
   background: var(--frame-bg);
   color: var(--text);
@@ -94,6 +146,33 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* ============ scrollbars ============ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ============ Title bar (frameless) ============ */
@@ -156,7 +235,7 @@ body {
 }
 
 .win-btn {
-  width: 46px;
+  width: var(--win-btn-w);
   border: none;
   background: transparent;
   color: var(--text);
@@ -178,28 +257,38 @@ body {
 }
 
 .win-btn:active {
-  background: var(--surface-hover);
-  filter: brightness(0.9);
+  background: var(--border);
 }
 
-/* Win11 style: close hover is a solid red fill with a white glyph. */
+.win-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.win-btn:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  background: transparent;
+}
+
+/* Close stays the one destructive control in the caption: solid red fill. */
 .win-close:hover {
-  background: #c42b1c;
+  background: var(--danger);
   color: #ffffff;
 }
+
 .win-close:active {
-  background: #b02213;
-  filter: none;
+  background: var(--danger-strong);
 }
 
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-dim);
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -218,14 +307,26 @@ body {
 }
 
 .icon-btn:active {
-  background: var(--surface-hover);
-  filter: brightness(0.9);
+  background: var(--border);
+  color: var(--text);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.icon-btn:disabled {
+  color: var(--text-dim);
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
 }
 
 .icon-btn.active {
-  background: var(--accent-dim);
-  color: var(--accent);
-  border-color: var(--accent-dim);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
 }
 
 .icon-btn .glyph {
@@ -238,7 +339,7 @@ body {
 /* ============ Toolbar (mode switch + status) ============ */
 
 .toolbar {
-  height: 40px;
+  height: var(--toolbar-h);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -252,25 +353,47 @@ body {
   display: flex;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 2px;
+  gap: 2px;
 }
 
 .seg button {
   border: none;
   background: transparent;
   color: var(--text-dim);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 12px;
   padding: 4px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+.seg button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.seg button:active {
+  background: var(--border);
+}
+
+.seg button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.seg button:disabled {
+  color: var(--text-dim);
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
+}
+
 .seg button.active {
-  background: var(--accent-dim);
-  color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .status {
@@ -286,7 +409,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--success);
 }
 
 /* ============ Main pane ============ */
@@ -303,18 +426,21 @@ body {
    the canvas uncluttered; full-screen modes reserve this rail on the left. */
 .toc-sidebar {
   display: none;
-  flex: 0 0 256px;
+  flex: 0 0 var(--toc-w);
   min-width: 0;
   flex-direction: column;
   background: var(--chrome-bg);
   border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-e2);
   overflow: hidden;
   transition: flex-basis 0.2s ease, min-width 0.2s ease;
 }
+
 .toc-sidebar.collapsed {
-  flex-basis: 40px;
-  min-width: 40px;
+  flex-basis: var(--toc-w-collapsed);
+  min-width: var(--toc-w-collapsed);
 }
+
 .toc-sidebar.collapsed .toc-header > .toc-title,
 .toc-sidebar.collapsed .toc-header > span,
 .toc-sidebar.collapsed .toc-header > .toc-toggle-all-btn,
@@ -323,10 +449,12 @@ body {
 .toc-sidebar.collapsed .toc-empty {
   display: none;
 }
+
 .pane.editor-only .toc-sidebar,
 .pane.preview-only .toc-sidebar { display: flex; }
+
 .toc-header {
-  height: 44px;
+  height: var(--titlebar-h);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -336,58 +464,86 @@ body {
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
 }
+
 .toc-collapse-btn {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
+
 .toc-collapse-btn:hover {
   background: var(--surface-hover);
 }
+
+.toc-collapse-btn:active {
+  background: var(--border);
+}
+
+.toc-collapse-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toc-collapse-btn:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  background: transparent;
+}
+
 .toc-title {
   flex: 1 1 auto;
   margin-left: 4px;
 }
+
 .toc-toggle-all-btn {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-family: inherit;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   line-height: 1.2;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
 }
+
 .toc-toggle-all-btn:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
+
 .toc-toggle-all-btn:active {
-  background: var(--accent-dim);
+  background: var(--accent-soft);
 }
+
+.toc-toggle-all-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .toc-toggle-all-btn:disabled {
   color: var(--text-dim);
   opacity: 0.5;
   cursor: default;
   background: transparent;
 }
+
 .toc-tree {
   overflow-y: auto;
   overflow-x: hidden;
@@ -396,23 +552,27 @@ body {
   flex-direction: column;
   gap: 2px;
 }
+
 .toc-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 28px;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
   user-select: none;
 }
+
 .toc-row:hover {
   background: var(--surface-hover);
 }
+
 .toc-row:active {
-  background: var(--accent-dim);
+  background: var(--accent-soft);
 }
+
 .toc-toggle {
   width: 18px;
   height: 18px;
@@ -425,37 +585,48 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.12s ease, color 0.12s ease;
 }
+
 .toc-toggle svg {
   display: block;
   flex: 0 0 auto;
 }
+
 .toc-toggle:hover {
   background: var(--surface-hover);
-  color: var(--accent);
+  color: var(--accent-text);
 }
+
+.toc-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .toc-toggle-spacer {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
 }
+
 .toc-badge {
   flex: 0 0 auto;
   font-size: 9.5px;
   font-weight: 600;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--toc-badge-bg);
   color: var(--toc-badge-color);
   letter-spacing: 0.02em;
   line-height: 1.4;
 }
+
 .toc-row.toc-level-1 .toc-badge {
   background: var(--toc-badge-h1-bg);
   color: var(--toc-badge-h1-color);
 }
+
 .toc-row.toc-level-2 .toc-badge {
   background: var(--toc-badge-h2-bg);
   color: var(--toc-badge-h2-color);
@@ -476,26 +647,31 @@ body {
   font-weight: 600;
   font-size: 12.5px;
 }
+
 .toc-row.toc-level-2 {
   color: var(--toc-h2);
   font-weight: 500;
   font-size: 12px;
 }
+
 .toc-row.toc-level-3 {
   color: var(--toc-h3);
   font-weight: 400;
   font-size: 12px;
 }
+
 .toc-row.toc-level-4 {
   color: var(--toc-h4);
   font-weight: 400;
   font-size: 11.5px;
 }
+
 .toc-row.toc-level-5 {
   color: var(--toc-h5);
   font-weight: 400;
   font-size: 11.5px;
 }
+
 .toc-row.toc-level-6 {
   color: var(--toc-h6);
   font-weight: 400;
@@ -505,16 +681,20 @@ body {
 .toc-row:hover .toc-link {
   color: var(--text);
 }
+
 .toc-row:hover.toc-level-1 .toc-link {
-  color: var(--accent);
+  color: var(--accent-text);
 }
+
 .toc-empty {
   padding: 18px;
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1.5;
 }
+
 .toc-empty[hidden] { display: none; }
+
 @media (max-width: 680px) {
   .toc-sidebar { flex-basis: 204px; }
 }
@@ -539,6 +719,11 @@ body {
   overflow: hidden;
 }
 
+/* Positioning context for the absolutely placed empty-preview overlay. */
+.preview-col {
+  position: relative;
+}
+
 .editor-wrap {
   flex: 1 1 auto;
   overflow: hidden;
@@ -559,35 +744,65 @@ body {
   background: var(--pane-bg);
 }
 
+/* Empty preview is an overlay, not a flex sibling: taking it out of flow
+   keeps the iframe mounted with a real viewport at all times. */
 .placeholder {
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--pane-bg);
   color: var(--text-dim);
   font-size: 13px;
 }
+
 .placeholder[hidden] {
   display: none;
 }
 
-/* CodeMirror theme overrides for light mode */
-:root[data-theme="light"] .cm-editor {
+/* ============ CodeMirror surface ============
+   oneDark ships its own blue-grey canvas (#282c34); the shell owns the
+   surface, syntax colors stay as the code-readability exception. The
+   [data-theme] attribute is part of the selector so these rules outrank the
+   theme class CodeMirror generates, whatever the bundle order is. */
+:root[data-theme] .cm-editor,
+:root[data-theme] .cm-editor .cm-scroller {
   background: var(--pane-bg);
   color: var(--text);
+  /* CodeMirror's base theme hardcodes `monospace` on .cm-scroller; the
+     editor keeps the shell's mono stack so it matches the preview font. */
+  font-family: var(--font-mono);
 }
 
-:root[data-theme="light"] .cm-editor .cm-gutters {
+:root[data-theme] .cm-editor .cm-gutters {
   background: var(--pane-bg);
   color: var(--text-dim);
   border-right: 1px solid var(--border);
 }
 
-:root[data-theme="light"] .cm-editor .cm-activeLine {
-  background: var(--accent-dim);
+:root[data-theme] .cm-editor .cm-activeLine {
+  background: var(--surface-hover);
 }
 
-/* Focus visible for keyboard users */
+:root[data-theme] .cm-editor .cm-activeLineGutter {
+  background: var(--surface-hover);
+}
+
+:root[data-theme] .cm-editor.cm-focused .cm-cursor,
+:root[data-theme] .cm-editor .cm-dropCursor {
+  border-left-color: var(--accent);
+}
+
+:root[data-theme] .cm-editor .cm-selectionBackground,
+:root[data-theme] .cm-editor.cm-focused .cm-selectionBackground,
+:root[data-theme] .cm-editor .cm-content ::selection {
+  background: var(--accent-soft);
+}
+
+/* ============ focus & motion ============ */
+
+/* Focus visible for keyboard users: blue ring, never a gradient or glow. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -597,20 +812,39 @@ body {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
 }
 
-/* ============ unsaved-changes confirm dialog ============ */
+/* ============ dialogs (shared chrome) ============ */
 
-#close-dialog {
+/* Dialogs start opaque so a WebView2 without backdrop-filter still reads;
+   the glass layer below is a progressive enhancement only. */
+#close-dialog,
+#settings-dialog {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 22px 24px 18px;
-  min-width: 340px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-e3);
+  padding: 20px 24px;
 }
 
-#close-dialog::backdrop {
-  background: rgba(4, 6, 10, 0.55);
+#close-dialog::backdrop,
+#settings-dialog::backdrop {
+  background: var(--backdrop);
+}
+
+@supports ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  #close-dialog,
+  #settings-dialog {
+    background: var(--surface-glass);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: var(--shadow-glass);
+  }
+}
+
+/* ============ unsaved-changes confirm dialog ============ */
+
+#close-dialog {
+  min-width: 340px;
 }
 
 #close-dialog h2 {
@@ -629,59 +863,69 @@ body {
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dialog-actions button {
-  font: inherit;
+  font-family: var(--font-sans);
   font-size: 13px;
   padding: 7px 18px;
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .dialog-actions button:hover {
   background: var(--surface-hover);
 }
 
-.dialog-actions button.primary {
-  background: var(--accent-dim);
-  border-color: var(--accent);
+.dialog-actions button:active {
+  background: var(--border);
 }
 
-:root[data-theme="light"] #close-dialog {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+.dialog-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dialog-actions button:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: default;
+  background: transparent;
+}
+
+.dialog-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.dialog-actions button.primary:hover {
+  background: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
+.dialog-actions button.primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ============ Settings dialog ============ */
 
 #settings-dialog {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px 24px 22px;
   width: 400px;
   max-width: 90vw;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-}
-
-:root[data-theme="light"] #settings-dialog {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
-}
-
-#settings-dialog::backdrop {
-  background: rgba(4, 6, 10, 0.55);
 }
 
 .settings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
@@ -693,20 +937,37 @@ body {
 
 .settings-close-btn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-dim);
   font-size: 13px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .settings-close-btn:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+.settings-close-btn:active {
+  background: var(--border);
+}
+
+.settings-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-close-btn:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: default;
+  background: transparent;
 }
 
 .settings-body {
@@ -724,7 +985,7 @@ body {
 .settings-label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .settings-name {
@@ -746,57 +1007,80 @@ body {
 }
 
 .settings-text-input {
-  font: inherit;
+  font-family: var(--font-sans);
   font-size: 12.5px;
   width: 100%;
   padding: 6px 10px;
-  background: var(--chrome-bg);
+  background: var(--pane-bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: var(--radius-md);
   outline: none;
   transition: border-color 0.15s ease;
+}
+
+.settings-text-input:hover {
+  border-color: var(--text-dim);
 }
 
 .settings-text-input:focus {
   border-color: var(--accent);
 }
 
+.settings-text-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-text-input:disabled {
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  cursor: default;
+}
+
 /* Theme segmented control */
 .theme-segmented {
   display: flex;
-  background: var(--chrome-bg);
+  background: var(--surface-hover);
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 4px);
+  border-radius: var(--radius-md);
   padding: 2px;
   gap: 2px;
 }
 
 .theme-segmented button {
-  font: inherit;
+  font-family: var(--font-sans);
   font-size: 12px;
   padding: 4px 12px;
   border: none;
   background: transparent;
   color: var(--text-dim);
-  border-radius: calc(var(--radius) - 6px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .theme-segmented button:hover {
   color: var(--text);
+  background: var(--border);
+}
+
+.theme-segmented button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.theme-segmented button:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+  cursor: default;
 }
 
 .theme-segmented button.active {
   background: var(--surface);
   color: var(--text);
   font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-:root[data-theme="light"] .theme-segmented button.active {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-e1);
 }
 
 /* Switch toggle */
@@ -820,9 +1104,9 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--chrome-bg);
+  background-color: var(--surface-hover);
   border: 1px solid var(--border);
-  transition: 0.2s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   border-radius: 22px;
 }
 
@@ -834,8 +1118,12 @@ body {
   left: 3px;
   bottom: 3px;
   background-color: var(--text-dim);
-  transition: 0.2s;
+  transition: transform 0.2s ease, background-color 0.2s ease;
   border-radius: 50%;
+}
+
+.switch:hover .slider:before {
+  background-color: var(--text);
 }
 
 .switch input:checked + .slider {
@@ -846,6 +1134,16 @@ body {
 .switch input:checked + .slider:before {
   transform: translateX(18px);
   background-color: #ffffff;
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ============ Frameless window resize handles ============ */
@@ -933,4 +1231,3 @@ body {
 #app.maximised .resize-handle {
   display: none;
 }
-

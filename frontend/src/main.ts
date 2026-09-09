@@ -104,9 +104,9 @@ titlebar.innerHTML = `
     <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
-    <button class="win-btn win-min" title="Minimise" aria-label="Minimise"></button>
-    <button class="win-btn win-max" title="Maximise" aria-label="Maximise"></button>
-    <button class="win-btn win-close" title="Close" aria-label="Close"></button>
+    <button class="win-btn win-min" title="最小化" aria-label="最小化"></button>
+    <button class="win-btn win-max" title="最大化" aria-label="最大化"></button>
+    <button class="win-btn win-close" title="关闭" aria-label="关闭"></button>
   </div>
 `;
 
@@ -114,32 +114,32 @@ const toolbar = document.createElement('div');
 toolbar.className = 'toolbar';
 toolbar.innerHTML = `
   <div class="seg" role="tablist">
-    <button class="active" data-mode="preview" role="tab">Preview</button>
-    <button data-mode="editor" role="tab">Editor</button>
-    <button data-mode="split" role="tab">Split</button>
+    <button class="active" data-mode="preview" role="tab" aria-selected="true" aria-controls="preview-col">预览</button>
+    <button data-mode="editor" role="tab" aria-selected="false" aria-controls="editor-col">编辑</button>
+    <button data-mode="split" role="tab" aria-selected="false" aria-controls="preview-col editor-col">分栏</button>
   </div>
-  <div class="status"><span class="dot"></span><span id="status-text">Ready</span></div>
+  <div class="status"><span class="dot"></span><span id="status-text">就绪</span></div>
 `;
 
 const pane = document.createElement('main');
 // Starts in Preview (the first toolbar tab is the default mode).
 pane.className = 'pane preview-only';
 pane.innerHTML = `
-  <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="Document outline">
+  <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="文档目录">
     <div class="toc-header">
-      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="展开侧栏">›</button>
+      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="展开侧栏" aria-expanded="false" aria-controls="toc-tree">›</button>
       <span class="toc-title">目录</span>
       <button class="toc-toggle-all-btn" id="toc-toggle-all" type="button" title="全部收起">全部收起</button>
     </div>
     <nav class="toc-tree" id="toc-tree"></nav>
-    <div class="toc-empty" id="toc-empty">当前文档没有标题</div>
+    <div class="toc-empty" id="toc-empty">当前文档暂无标题</div>
   </aside>
-  <section class="editor-col">
+  <section class="editor-col" id="editor-col">
     <div class="editor-wrap" id="editor-host"></div>
   </section>
-  <section class="preview-col">
-    <iframe class="preview-frame" id="preview" sandbox="allow-same-origin" title="Preview"></iframe>
-    <div class="placeholder" id="preview-empty" hidden>No preview</div>
+  <section class="preview-col" id="preview-col">
+    <iframe class="preview-frame" id="preview" sandbox="allow-same-origin" title="预览"></iframe>
+    <div class="placeholder" id="preview-empty" hidden>暂无预览内容</div>
   </section>
 `;
 
@@ -394,6 +394,7 @@ tocCollapse.addEventListener('click', () => {
   const isCollapsed = tocSidebar.classList.contains('collapsed');
   tocCollapse.textContent = isCollapsed ? '›' : '‹';
   tocCollapse.title = isCollapsed ? '展开侧栏' : '折叠侧栏';
+  tocCollapse.setAttribute('aria-expanded', String(!isCollapsed));
   if (!isCollapsed && tocDirty) {
     renderToc();
   }
@@ -440,7 +441,7 @@ const fontCommitter = createFontCommitter({
   },
   fail: (err) => {
     console.error('SetPreviewFont failed', err);
-    statusEl.textContent = 'Preview font rejected';
+    statusEl.textContent = '预览字体无效';
   },
   restore: (value) => {
     if (setPreviewFontInput) setPreviewFontInput.value = value;
@@ -481,13 +482,15 @@ function applyWrap(on: boolean) {
   }
 }
 
-// Light syntax highlighting for CodeMirror (dark default is oneDark).
+// Light syntax highlighting for CodeMirror (dark default is oneDark). Only
+// the chrome takes shell tokens here; the syntax colors of oneDark stay as
+// the code-readability exception, so no literal is duplicated.
 const lightSyntax = EditorView.theme({
-  '&': { backgroundColor: '#fbfbfa', color: '#34383f' },
-  '.cm-content': { caretColor: '#3558d6' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#3558d6' },
+  '&': { backgroundColor: 'var(--pane-bg)', color: 'var(--text)' },
+  '.cm-content': { caretColor: 'var(--accent)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(53, 88, 214, 0.18)',
+    backgroundColor: 'var(--accent-soft)',
   },
 }, { dark: false });
 
@@ -558,10 +561,10 @@ async function refreshPreview() {
     previewCss = css;
     writePreview(html);
     updateToc(md);
-    statusEl.textContent = dirty ? 'Unsaved changes' : 'Ready';
+    statusEl.textContent = dirty ? '未保存' : '就绪';
   } catch (err) {
     console.error('render failed', err);
-    statusEl.textContent = 'Render error';
+    statusEl.textContent = '渲染失败';
   }
 }
 
@@ -868,7 +871,7 @@ async function openPath(path: string) {
     await loadContent(path, content);
   } catch (err) {
     console.error(err);
-    statusEl.textContent = 'Open failed';
+    statusEl.textContent = '打开失败';
   }
 }
 
@@ -879,7 +882,7 @@ async function openFile() {
     await openPath(path);
   } catch (err) {
     console.error(err);
-    statusEl.textContent = 'Open failed';
+    statusEl.textContent = '打开失败';
   }
 }
 
@@ -896,11 +899,11 @@ async function saveCurrent(): Promise<boolean> {
     currentFile = path;
     setTitle(baseName(path));
     setDirty(false);
-    statusEl.textContent = 'Saved';
+    statusEl.textContent = '已保存';
     return true;
   } catch (err) {
     console.error(err);
-    statusEl.textContent = 'Save failed';
+    statusEl.textContent = '保存失败';
     return false;
   }
 }
@@ -919,7 +922,7 @@ async function newFile() {
     isLoading = false;
   }
   setDirty(false);
-  setTitle('untitled');
+  setTitle('未命名');
   statusEl.textContent = 'Ready';
   await refreshPreview();
 }
@@ -1149,8 +1152,12 @@ let savedPreviewScroll: number | undefined;
 
 toolbar.querySelectorAll('.seg button').forEach((btn) => {
   btn.addEventListener('click', () => {
-    toolbar.querySelectorAll('.seg button').forEach((b) => b.classList.remove('active'));
+    toolbar.querySelectorAll('.seg button').forEach((b) => {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     const mode = btn.dataset.mode as 'split' | 'editor' | 'preview';
     if (isPreviewVisible()) {
       savedPreviewScroll = previewIframe.contentDocument?.scrollingElement?.scrollTop;
@@ -1227,7 +1234,7 @@ async function init() {
     // Fall back to a blank document; newFile() resets the status bar to
     // Ready, so the failure notice has to be written after it.
     await newFile();
-    statusEl.textContent = 'Open failed';
+    statusEl.textContent = '打开失败';
   }
   cm.focus();
 }

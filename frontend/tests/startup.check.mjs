@@ -147,6 +147,24 @@ const scenario = `<script>
         state.renderInputs.length === 2 && styleMutations === 0 && articleMutations === 0,
     });
 
+    // Mode tabs carry ARIA state, and the confirm dialog keeps the three
+    // submitter values the close flow reads back.
+    const modeButtons = Array.from(document.querySelectorAll('.seg button'));
+    results.push({
+      name: 'mode-aria-contract',
+      ok: modeButtons.length === 3 &&
+        modeButtons.filter((btn) => btn.getAttribute('aria-selected') === 'true').length === 1 &&
+        modeButtons[0].getAttribute('aria-selected') === 'true' &&
+        ['preview', 'editor', 'split'].every((mode) =>
+          document.querySelector('.seg button[data-mode="' + mode + '"]')),
+    });
+    results.push({
+      name: 'dialog-submitters',
+      ok: ['cancel', 'no', 'yes'].every((value) =>
+        document.querySelector('#close-dialog button[value="' + value + '"]')) &&
+        document.querySelector('#close-dialog form')?.getAttribute('method') === 'dialog',
+    });
+
     const loadBeforeCancel = state.loadCalls;
     stage = 'open-cancel';
     document.getElementById('btn-open').click();
@@ -166,11 +184,11 @@ const scenario = `<script>
     await waitFor(() => document.getElementById('close-dialog')?.open);
     document.querySelector('#close-dialog button[value="no"]').click();
     await waitFor(() => !document.getElementById('close-dialog')?.open);
-    await waitFor(() => document.getElementById('status-text')?.textContent === 'Open failed');
+    await waitFor(() => document.getElementById('status-text')?.textContent === '打开失败');
     results.push({
       name: 'drop-read-failure-feedback',
       ok: state.loadPaths.at(-1) === 'drop.md' &&
-        document.getElementById('status-text').textContent === 'Open failed',
+        document.getElementById('status-text').textContent === '打开失败',
     });
 
     report(results.map((result) => result.name + ': ' + (result.ok ? 'PASS' : 'FAIL')).join(' | ') +

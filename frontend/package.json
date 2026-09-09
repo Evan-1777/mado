@@ -7,7 +7,7 @@
     "copy-assets": "node scripts/copy-assets.mjs",
     "build": "esbuild src/main.ts --bundle --minify --format=iife --outfile=dist/app.js && npm run copy-assets",
     "dev": "npm run copy-assets && esbuild src/main.ts --bundle --format=iife --outfile=dist/app.js --watch",
-    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts && node tests/renderScheduler.test.ts"
+    "test": "node tests/fontCommit.test.ts && node tests/gutter.test.ts && node tests/tocGutter.test.ts && node tests/renderScheduler.test.ts && node tests/uiContract.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",
