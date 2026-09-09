@@ -9,6 +9,7 @@
   color-scheme: dark;
 
   /* ---- raw palette: the only place a literal color is written ---- */
+  --white: #ffffff;
   --zinc-50: #fafafa;
   --zinc-100: #f4f4f5;
   --zinc-200: #e4e4e7;
@@ -63,6 +64,7 @@
   --accent: var(--blue-600);
   --accent-soft: rgba(37, 99, 235, 0.18);
   --accent-text: var(--blue-400);
+  --focus-ring: var(--blue-400);
   --danger: var(--red-600);
   --danger-strong: var(--red-700);
   --backdrop: rgba(9, 9, 11, 0.6);
@@ -92,8 +94,8 @@
 
   --frame-bg: var(--zinc-200);
   --chrome-bg: var(--zinc-100);
-  --pane-bg: #ffffff;
-  --surface: #ffffff;
+  --pane-bg: var(--white);
+  --surface: var(--white);
   --surface-glass: rgba(255, 255, 255, 0.86);
   --surface-hover: var(--zinc-100);
   --text: var(--zinc-900);
@@ -102,6 +104,7 @@
   --accent: var(--blue-600);
   --accent-soft: var(--blue-50);
   --accent-text: var(--blue-700);
+  --focus-ring: var(--blue-600);
   --danger: var(--red-600);
   --danger-strong: var(--red-700);
   --backdrop: rgba(9, 9, 11, 0.32);
@@ -117,7 +120,7 @@
   --toc-badge-color: var(--text-dim);
   --toc-badge-h1-bg: var(--blue-50);
   --toc-badge-h1-color: var(--blue-700);
-  --toc-badge-h2-bg: #ffffff;
+  --toc-badge-h2-bg: var(--white);
   --toc-badge-h2-color: var(--blue-600);
 }
 
@@ -261,7 +264,7 @@ body {
 }
 
 .win-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -274,7 +277,7 @@ body {
 /* Close stays the one destructive control in the caption: solid red fill. */
 .win-close:hover {
   background: var(--danger);
-  color: #ffffff;
+  color: var(--white);
 }
 
 .win-close:active {
@@ -312,7 +315,7 @@ body {
 }
 
 .icon-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -380,7 +383,7 @@ body {
 }
 
 .seg button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -493,7 +496,7 @@ body {
 }
 
 .toc-collapse-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -533,7 +536,7 @@ body {
 }
 
 .toc-toggle-all-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -600,7 +603,7 @@ body {
 }
 
 .toc-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -804,7 +807,7 @@ body {
 
 /* Focus visible for keyboard users: blue ring, never a gradient or glow. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -887,7 +890,7 @@ body {
 }
 
 .dialog-actions button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -901,7 +904,7 @@ body {
 .dialog-actions button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--white);
 }
 
 .dialog-actions button.primary:hover {
@@ -910,7 +913,7 @@ body {
 }
 
 .dialog-actions button.primary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -959,7 +962,7 @@ body {
 }
 
 .settings-close-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1028,7 +1031,7 @@ body {
 }
 
 .settings-text-input:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1066,7 +1069,7 @@ body {
 }
 
 .theme-segmented button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1133,11 +1136,11 @@ body {
 
 .switch input:checked + .slider:before {
   transform: translateX(18px);
-  background-color: #ffffff;
+  background-color: var(--white);
 }
 
 .switch input:focus-visible + .slider {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

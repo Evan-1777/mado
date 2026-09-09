@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.9：09-09-v1 前端 UI 设计规范重构完成，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.9：前端 UI 设计规范重构与审计遗留问题修复完成，待 Windows 交互验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -135,7 +135,7 @@ docs/                    # 用户文档
 - 「变换器标注围栏块前必须合并 info 串 `{...}` 属性——原因：goldmark-highlighting 的 `getAttributes` 在节点已有属性时完全跳过 info 串解析，先写 `data-line` 会静默丢弃 `{nohl=true}`/`{style=...}`；合并用 goldmark 导出的 `parser.ParseAttributes`，并与上游一致地要求 `{` 下标 > 0」
 - 「★ 启用 `highlighting.WithWrapperRenderer` 后，未被 Chroma 高亮的围栏块（无词法分析器或 `{nohl=true}`）的 `<pre><code>` 由包装渲染器补齐，否则代码行会以裸文本直出——原因：上游 `renderFencedCodeBlock` 只在 `WrapperRenderer == nil` 时才写 `<pre><code`，高亮分支由 Chroma 自带 preWrapper 输出；包装渲染器须自行补齐（进出两次调用收到同一个 `CodeBlockContext` 实例，退出时用 `!c.Highlighted()` 判定即可，不要用包级状态记录当前块）」
 - 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
-- 「外壳覆盖 CodeMirror 主题样式必须带 `:root[data-theme]` 属性选择器——原因：oneDark 生成的规则形如 `.ͼX.cm-editor`（两类选择器），且 esbuild 打包顺序使主题 CSS 排在外壳之后；无属性选择器的 `.cm-editor` 规则特异性不足会被压过，导致 oneDark 的蓝灰画布 `#282c34` 盖掉外壳的 Zinc 表面」
+- 「外壳覆盖 CodeMirror 主题样式必须带 `:root[data-theme]` 属性选择器——原因：oneDark 生成的规则形如 `.ͼX.cm-editor`（两类选择器），且 esbuild 打包顺序使主题 CSS 排在外壳之后；无属性选择器的 `.cm-editor` 规则特异性不足会被压过，导致 oneDark 的蓝灰画布 `#282c34` 盖掉外壳的 Zinc 表面；`index.html` 根 `<html>` 标签声明默认 `data-theme="dark"` 确保启动静态解析期即刻生效压制」
 - 「外壳与预览两套样式表的令牌值必须成对维护（`frontend/src/style.css` 的 Zinc 原始色 ↔ `internal/theme/assets/theme/tokens-*.css`）——原因：iframe 文档无法继承父窗口 CSS 变量；值漂移会让编辑区与预览出现两套灰阶。由 `tests/uiContract.test.mjs` 与 `internal/theme` 的 `TestTokenValues` 双向断言」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
@@ -159,6 +159,12 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-09 批判性修复 09-09-v1 审计遗留问题采用最短有效差分：
+  1. 状态栏文案彻底中文收敛：修复 `loadContent` 与 `newFile` 中硬编码英文 `'Ready'` 为 `'就绪'`；
+  2. 契约测试补齐负向防御：`uiContract.test.mjs` 补充对 `'Ready'`、`'Unsaved changes'`、`'Render error'`、`'Save failed'`、`'Open failed'` 等退役状态文案的 `hasNot` 校验，杜绝测试假阳性；
+  3. 首屏特异性与防闪烁：`index.html` 根 `<html>` 标签增加 `data-theme="dark"` 默认属性，确保静态解析期即可命中 `:root[data-theme]` 规则，消除 CodeMirror 初始背景瞬时闪烁风险；
+  4. ARIA 无障碍契约完善：模式切换 Tab 按钮补齐唯一 `id`，`#editor-col` 与 `#preview-col` 补充 `role="tabpanel"` 与 `aria-labelledby` 映射；`#toc-collapse` 补充动态 `aria-label` 切换；
+  5. 令牌单一事实来源与滚动条统一：raw palette 显式声明 `--white: #ffffff` 并替换组件硬编码裸色；声明语义令牌 `--focus-ring`（暗色 `--blue-400` / 浅色 `--blue-600`）提升暗色下键盘焦点环对比度；`base.css` 注入与外壳一致的 10px 细滚动条，消除 iframe 与外壳样式割裂。
 - 2026-09-09 前端 UI 按新设计规范重构，采用「Zinc 原始色阶 + 语义令牌 + 4 档圆角/阴影」的原生 CSS Custom Properties 方案，不引入 Tailwind/Radix/shadcn 等运行时或构建框架——理由：单视图桌面编辑器，Vanilla TS + 原生变量已覆盖需求，新增框架会扩大构建与嵌入体积。保留标题栏 44px、工具栏 40px、窗口按钮 46px、目录侧栏 256px/40px 等已与窗口拖动、滚动区域和无头回归绑定的尺寸；CodeMirror（oneDark）与 Chroma 的语法色列为代码可读性例外，外壳交互色不复用语法色，暗色预览链接按 WCAG AA 4.5:1 采用 `#60a5fa`（亮色统一 `#2563eb`）。空预览占位由 flex 兄弟改为绝对定位浮层，使 iframe 视口常驻、彻底消除 flex 高度挤压与 `hidden` 销毁视口的风险。未采用新增字体资源/Geist 依赖、Glass 作为可用性前提（保留不透明回退）、以及把样式重构扩大为行为重写：前两者违反离线低占用与 WebView2 降级要求，后者会把视觉任务变成交互回归源
 - 2026-09-08 修复 CI Windows 环境测试报错：`TestWriteFileAtomic` 中已有文件权限继承断言按平台区分（Windows 下常规可写文件 Perm 为 0o666，POSIX 下为 0o600）；`TestConcurrentBindingsNoRace` 为 8 个并发 worker 赋予独立保存路径（`save-%d.md`），消除了 Windows 下多 goroutine 调用 `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)` 向同一文件并发改名替换导致的 `Access is denied` 冲突，同时完整保留对 App 状态读写锁与共享 store 串行化的并发压测覆盖。
 - 2026-09-08 针对 09-08-v1 审计遗留问题采用最短结构修复：meta refresh 在完整标签内按引号状态解析属性并接受 HTML 空白/斜杠分隔；WriteFile 先解析符号链接真实目标，悬空链接失败且不降级为截断覆写；askUnsaved 每次打开清空 dialog returnValue；build/dev 共用 `copy-assets.mjs`；renderScheduler 以 Promise 完成做轻量背压并合并最新请求。未采用 AST 全量重写、跨目录临时文件或权限失败时直接写入：前者改变 raw HTML 语义，后两者分别破坏原子替换或失败不变性

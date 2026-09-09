@@ -114,9 +114,9 @@ const toolbar = document.createElement('div');
 toolbar.className = 'toolbar';
 toolbar.innerHTML = `
   <div class="seg" role="tablist">
-    <button class="active" data-mode="preview" role="tab" aria-selected="true" aria-controls="preview-col">预览</button>
-    <button data-mode="editor" role="tab" aria-selected="false" aria-controls="editor-col">编辑</button>
-    <button data-mode="split" role="tab" aria-selected="false" aria-controls="preview-col editor-col">分栏</button>
+    <button class="active" id="tab-preview" data-mode="preview" role="tab" aria-selected="true" aria-controls="preview-col">预览</button>
+    <button id="tab-editor" data-mode="editor" role="tab" aria-selected="false" aria-controls="editor-col">编辑</button>
+    <button id="tab-split" data-mode="split" role="tab" aria-selected="false" aria-controls="preview-col editor-col">分栏</button>
   </div>
   <div class="status"><span class="dot"></span><span id="status-text">就绪</span></div>
 `;
@@ -127,17 +127,17 @@ pane.className = 'pane preview-only';
 pane.innerHTML = `
   <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="文档目录">
     <div class="toc-header">
-      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="展开侧栏" aria-expanded="false" aria-controls="toc-tree">›</button>
+      <button class="toc-collapse-btn" id="toc-collapse" type="button" title="展开侧栏" aria-label="展开侧栏" aria-expanded="false" aria-controls="toc-tree">›</button>
       <span class="toc-title">目录</span>
       <button class="toc-toggle-all-btn" id="toc-toggle-all" type="button" title="全部收起">全部收起</button>
     </div>
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档暂无标题</div>
   </aside>
-  <section class="editor-col" id="editor-col">
+  <section class="editor-col" id="editor-col" role="tabpanel" aria-labelledby="tab-editor">
     <div class="editor-wrap" id="editor-host"></div>
   </section>
-  <section class="preview-col" id="preview-col">
+  <section class="preview-col" id="preview-col" role="tabpanel" aria-labelledby="tab-preview">
     <iframe class="preview-frame" id="preview" sandbox="allow-same-origin" title="预览"></iframe>
     <div class="placeholder" id="preview-empty" hidden>暂无预览内容</div>
   </section>
@@ -393,7 +393,9 @@ tocCollapse.addEventListener('click', () => {
   tocSidebar.classList.toggle('collapsed');
   const isCollapsed = tocSidebar.classList.contains('collapsed');
   tocCollapse.textContent = isCollapsed ? '›' : '‹';
-  tocCollapse.title = isCollapsed ? '展开侧栏' : '折叠侧栏';
+  const label = isCollapsed ? '展开侧栏' : '折叠侧栏';
+  tocCollapse.title = label;
+  tocCollapse.setAttribute('aria-label', label);
   tocCollapse.setAttribute('aria-expanded', String(!isCollapsed));
   if (!isCollapsed && tocDirty) {
     renderToc();
@@ -860,7 +862,7 @@ async function loadContent(path: string, content: string) {
   }
   setDirty(false);
   setTitle(baseName(path));
-  statusEl.textContent = 'Ready';
+  statusEl.textContent = '就绪';
   await refreshPreview();
 }
 
@@ -923,7 +925,7 @@ async function newFile() {
   }
   setDirty(false);
   setTitle('未命名');
-  statusEl.textContent = 'Ready';
+  statusEl.textContent = '就绪';
   await refreshPreview();
 }
 

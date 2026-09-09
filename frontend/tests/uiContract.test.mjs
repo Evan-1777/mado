@@ -13,6 +13,7 @@ const html = read('index.html');
 const ts = read('src/main.ts');
 const darkTokens = read('../internal/theme/assets/theme/tokens-dark.css');
 const lightTokens = read('../internal/theme/assets/theme/tokens-light.css');
+const baseCss = read('../internal/theme/assets/theme/base.css');
 
 let failures = 0;
 function fail(msg) {
@@ -32,6 +33,9 @@ function hasRule(source, selector, declaration, what) {
 }
 
 // ---- palette: raw tokens are the only place a literal color may live ----
+const base = {
+  '--white': '#ffffff',
+};
 const zinc = {
   '--zinc-50': '#fafafa',
   '--zinc-100': '#f4f4f5',
@@ -47,6 +51,7 @@ const zinc = {
 };
 const state = {
   '--blue-50': '#eff6ff',
+  '--blue-400': '#60a5fa',
   '--blue-600': '#2563eb',
   '--blue-700': '#1d4ed8',
   '--red-50': '#fef2f2',
@@ -54,7 +59,7 @@ const state = {
   '--red-700': '#b91c1c',
   '--success': '#16a34a',
 };
-for (const [token, value] of Object.entries({ ...zinc, ...state })) {
+for (const [token, value] of Object.entries({ ...base, ...zinc, ...state })) {
   has(css, `${token}: ${value};`, 'raw palette');
 }
 
@@ -123,6 +128,9 @@ hasRule(css, '.preview-col', 'position: relative', 'overlay host');
 hasNot(ts, 'previewIframe.hidden', 'iframe must never be hidden');
 
 // ---- keyboard focus contract ----
+has(css, '--focus-ring: var(--blue-400);', 'dark focus ring token');
+has(css, '--focus-ring: var(--blue-600);', 'light focus ring token');
+hasRule(css, ':focus-visible', 'outline: 2px solid var(--focus-ring)', 'generic focus ring');
 for (const selector of [
   '.icon-btn',
   '.win-btn',
@@ -135,10 +143,16 @@ for (const selector of [
   '.settings-text-input',
   '.theme-segmented button',
 ]) {
-  if (!new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:focus-visible`).test(css)) {
-    fail(`focus: ${selector} has no :focus-visible rule`);
+  if (!new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:focus-visible[^{]*\\{[^}]*outline:[^;]*var\\(--focus-ring\\)`).test(css)) {
+    fail(`focus: ${selector} missing outline with var(--focus-ring)`);
   }
 }
+
+// ---- scrollbar styling parity between shell and preview ----
+has(css, '::-webkit-scrollbar', 'shell scrollbar');
+has(baseCss, '::-webkit-scrollbar', 'preview scrollbar');
+has(baseCss, '::-webkit-scrollbar-thumb', 'preview scrollbar thumb');
+has(baseCss, 'background: var(--border);', 'preview scrollbar thumb border');
 
 // ---- dialogs: native semantics and submitter values survive restyling ----
 has(html, 'id="close-dialog"', 'close dialog');
@@ -154,6 +168,7 @@ for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', '
 }
 has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
+has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
 has(html, 'src="./app.js"', 'bundle asset path');
 
@@ -169,8 +184,18 @@ for (const [mode, label] of [['preview', '预览'], ['editor', '编辑'], ['spli
 for (const copy of ['暂无预览内容', '当前文档暂无标题', '就绪', '未保存', '已保存', '打开失败', '保存失败', '渲染失败']) {
   has(ts, copy, 'user-facing copy');
 }
+for (const legacy of ["'Ready'", "'Unsaved changes'", "'Render error'", "'Save failed'", "'Open failed'"]) {
+  hasNot(ts, legacy, 'retired English status copy');
+}
 if (!/setAttribute\('aria-selected'/.test(ts)) fail('mode aria-selected is never updated');
 if (!/setAttribute\('aria-expanded'/.test(ts)) fail('toc aria-expanded is never updated');
+has(ts, 'id="tab-preview"', 'preview tab id');
+has(ts, 'id="tab-editor"', 'editor tab id');
+has(ts, 'id="tab-split"', 'split tab id');
+has(ts, 'role="tabpanel" aria-labelledby="tab-editor"', 'editor tabpanel link');
+has(ts, 'role="tabpanel" aria-labelledby="tab-preview"', 'preview tabpanel link');
+has(ts, 'aria-label="展开侧栏"', 'toc collapse initial label');
+if (!/setAttribute\('aria-label'/.test(ts)) fail('toc aria-label is never updated');
 
 if (failures > 0) process.exit(1);
 console.log('ui contract self-check: OK');
