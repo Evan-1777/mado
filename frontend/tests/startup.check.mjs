@@ -1,6 +1,6 @@
 // Dev-only headless-Chrome self-check for startup rendering, load ordering,
-// and preview write caching. NOT part of `npm test` or CI: Chrome is not a
-// guaranteed CI dependency.
+// preview write caching, and editor selection visibility. NOT part of
+// `npm test` or CI: Chrome is not a guaranteed CI dependency.
 //
 // Prerequisite: `npm run build` must have produced dist/. Run with:
 //   node tests/startup.check.mjs
@@ -189,6 +189,38 @@ const scenario = `<script>
       name: 'drop-read-failure-feedback',
       ok: state.loadPaths.at(-1) === 'drop.md' &&
         document.getElementById('status-text').textContent === '打开失败',
+    });
+
+    // CodeMirror paints the selection in a layer below the line elements, so
+    // a single-line selection vanishes while the active line is opaque.
+    // Assert the marker exists, overlaps the active line without being
+    // covered by it, and resolves to the shared selection token in both
+    // themes. The view is reached the same way EditorView.findFromDOM does.
+    stage = 'selection-visibility';
+    document.querySelector('.seg button[data-mode="editor"]').click();
+    const view = document.querySelector('.cm-content').cmTile.root.view;
+    view.focus();
+    view.dispatch({ selection: { anchor: 2, head: 6 } });
+    await waitFor(() => document.querySelector('.cm-selectionBackground'));
+    const selectionColor = () =>
+      getComputedStyle(document.querySelector('.cm-selectionBackground')).backgroundColor;
+    const alphaOf = (color) =>
+      color.startsWith('rgba(') ? Number(color.slice(color.lastIndexOf(',') + 1, -1)) : 1;
+    const selectionRect = document.querySelector('.cm-selectionBackground').getBoundingClientRect();
+    const activeLine = document.querySelector('.cm-activeLine');
+    const activeRect = activeLine.getBoundingClientRect();
+    const darkSelectionOk =
+      selectionRect.width > 0 && selectionRect.height > 0 &&
+      activeRect.top < selectionRect.bottom && selectionRect.top < activeRect.bottom &&
+      alphaOf(getComputedStyle(activeLine).backgroundColor) < 1 &&
+      selectionColor() === 'rgba(37, 99, 235, 0.45)';
+    document.getElementById('btn-settings').click();
+    document.getElementById('set-theme-light').click();
+    await waitFor(() => document.documentElement.dataset.theme === 'light');
+    await waitFor(() => document.querySelector('.cm-selectionBackground'));
+    results.push({
+      name: 'selection-visibility',
+      ok: darkSelectionOk && selectionColor() === 'rgb(191, 219, 254)',
     });
 
     report(results.map((result) => result.name + ': ' + (result.ok ? 'PASS' : 'FAIL')).join(' | ') +

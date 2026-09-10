@@ -22,6 +22,7 @@
   --zinc-900: #18181b;
   --zinc-950: #09090b;
   --blue-50: #eff6ff;
+  --blue-200: #bfdbfe;
   --blue-400: #60a5fa;
   --blue-600: #2563eb;
   --blue-700: #1d4ed8;
@@ -58,6 +59,12 @@
   --surface: var(--zinc-900);
   --surface-glass: rgba(24, 24, 27, 0.82);
   --surface-hover: var(--zinc-800);
+  /* Text selection needs mid/high contrast; the weak accent stays on badges
+     and active toolbar buttons, so the two roles get separate tokens. */
+  --selection-bg: rgba(37, 99, 235, 0.45);
+  /* CodeMirror paints the selection under the line elements, so the active
+     line must stay translucent or it hides the selection on that line. */
+  --editor-active-line: rgba(255, 255, 255, 0.04);
   --text: var(--zinc-100);
   --text-dim: var(--zinc-400);
   --border: var(--zinc-800);
@@ -98,6 +105,8 @@
   --surface: var(--white);
   --surface-glass: rgba(255, 255, 255, 0.86);
   --surface-hover: var(--zinc-100);
+  --selection-bg: var(--blue-200);
+  --editor-active-line: rgba(24, 24, 27, 0.04);
   --text: var(--zinc-900);
   --text-dim: var(--zinc-500);
   --border: var(--zinc-200);
@@ -785,7 +794,7 @@ body {
 }
 
 :root[data-theme] .cm-editor .cm-activeLine {
-  background: var(--surface-hover);
+  background: var(--editor-active-line);
 }
 
 :root[data-theme] .cm-editor .cm-activeLineGutter {
@@ -798,9 +807,14 @@ body {
 }
 
 :root[data-theme] .cm-editor .cm-selectionBackground,
-:root[data-theme] .cm-editor.cm-focused .cm-selectionBackground,
-:root[data-theme] .cm-editor .cm-content ::selection {
-  background: var(--accent-soft);
+:root[data-theme] .cm-editor.cm-focused .cm-selectionBackground {
+  background: var(--selection-bg);
+}
+
+/* Native-selection text (settings inputs, dialog copy) converges on the same
+   token, so there is one selection colour across the whole shell. */
+::selection {
+  background: var(--selection-bg);
 }
 
 /* ============ focus & motion ============ */

@@ -6,6 +6,9 @@
   --border: #27272a;
   --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.18);
+  /* Mirrors --selection-bg in the shell stylesheet: the iframe has its own
+     document, so the two values must be edited together. */
+  --selection-bg: rgba(37, 99, 235, 0.45);
   --code-bg: #18181b;
   --quote-bg: #18181b;
   --quote-border: #52525b;

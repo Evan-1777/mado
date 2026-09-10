@@ -491,9 +491,6 @@ const lightSyntax = EditorView.theme({
   '&': { backgroundColor: 'var(--pane-bg)', color: 'var(--text)' },
   '.cm-content': { caretColor: 'var(--accent)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
-  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'var(--accent-soft)',
-  },
 }, { dark: false });
 
 async function toggleTheme() {

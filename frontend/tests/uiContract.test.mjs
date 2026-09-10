@@ -51,6 +51,7 @@ const zinc = {
 };
 const state = {
   '--blue-50': '#eff6ff',
+  '--blue-200': '#bfdbfe',
   '--blue-400': '#60a5fa',
   '--blue-600': '#2563eb',
   '--blue-700': '#1d4ed8',
@@ -89,6 +90,7 @@ for (const [token, value] of Object.entries({
   '--border': '#27272a',
   '--accent': '#2563eb',
   '--accent-soft': 'rgba(37, 99, 235, 0.18)',
+  '--selection-bg': 'rgba(37, 99, 235, 0.45)',
   '--code-bg': '#18181b',
   '--quote-bg': '#18181b',
   '--quote-border': '#52525b',
@@ -107,6 +109,7 @@ for (const [token, value] of Object.entries({
   '--border': '#e4e4e7',
   '--accent': '#2563eb',
   '--accent-soft': '#eff6ff',
+  '--selection-bg': '#bfdbfe',
   '--code-bg': '#f4f4f5',
   '--quote-bg': '#fafafa',
   '--quote-border': '#a1a1aa',
@@ -121,6 +124,16 @@ for (const [token, value] of Object.entries({
 // ---- CodeMirror surface is owned by the shell, not by oneDark ----
 hasRule(css, ':root[data-theme] .cm-editor', 'background: var(--pane-bg)', 'editor surface');
 has(css, 'font-family: var(--font-mono)', 'editor mono stack');
+
+// ---- text selection is visible on the active line in both themes ----
+// CodeMirror draws the selection in a layer below the line elements, so an
+// opaque active line paints over it. The line token must stay translucent,
+// and the selection token must be the high-contrast one, not --accent-soft.
+hasRule(css, '.cm-activeLine', 'background: var(--editor-active-line)', 'active line layer');
+hasRule(css, '.cm-selectionBackground', 'background: var(--selection-bg)', 'editor selection');
+has(css, '--editor-active-line: rgba(255, 255, 255, 0.04);', 'dark active line token');
+has(css, '--editor-active-line: rgba(24, 24, 27, 0.04);', 'light active line token');
+hasRule(baseCss, '::selection', 'background: var(--selection-bg)', 'preview selection');
 
 // ---- empty preview is an overlay; the iframe stays mounted ----
 hasRule(css, '.placeholder', 'position: absolute', 'empty preview overlay');

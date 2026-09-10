@@ -71,6 +71,7 @@ docs/                    # 用户文档
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
   - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
+  - 文本选区通道：外壳 `frontend/src/style.css` 与预览 `tokens-*.css` 成对维护 `--selection-bg`（暗 `rgba(37, 99, 235, 0.45)` / 亮 `#bfdbfe`），统一 CodeMirror 选区层、外壳原生选区与预览 `::selection`；编辑器活动行固定为约 4% 半透明的 `--editor-active-line`，不得回退为不透明表面色（CM6 选区层绘制在行元素背景之下，不透明活动行会遮住当前行选区）
   - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功并解锁后才切换；App 的 `sync.RWMutex` 守护设置、dirty 与 quitting，`Render/GetCSS/GetSettings` 在锁内取快照，`main.go` 通过 `shouldPreventClose()` 读取关闭快照，偏好与 lastfile 的共享 JSON 写入在同一进程内串行化；渲染调度器在 refresh Promise 完成前合并最新请求
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；初始化主题仅应用界面状态、不触发预览，加载/新建在清空旧 timer 并抑制文档监听副作用后显式渲染一次；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
@@ -137,6 +138,7 @@ docs/                    # 用户文档
 - 「预览行号栏的 CSS 规则必须写在 `internal/theme/assets/theme/base.css`——原因：行号画在 iframe 文档内，`frontend/src/style.css` 只作用于父窗口；数字落在 body 左内边距（2.75rem）中，4 位以上行号仅视觉溢出，不影响布局」
 - 「外壳覆盖 CodeMirror 主题样式必须带 `:root[data-theme]` 属性选择器——原因：oneDark 生成的规则形如 `.ͼX.cm-editor`（两类选择器），且 esbuild 打包顺序使主题 CSS 排在外壳之后；无属性选择器的 `.cm-editor` 规则特异性不足会被压过，导致 oneDark 的蓝灰画布 `#282c34` 盖掉外壳的 Zinc 表面；`index.html` 根 `<html>` 标签声明默认 `data-theme="dark"` 确保启动静态解析期即刻生效压制」
 - 「外壳与预览两套样式表的令牌值必须成对维护（`frontend/src/style.css` 的 Zinc 原始色 ↔ `internal/theme/assets/theme/tokens-*.css`）——原因：iframe 文档无法继承父窗口 CSS 变量；值漂移会让编辑区与预览出现两套灰阶。由 `tests/uiContract.test.mjs` 与 `internal/theme` 的 `TestTokenValues` 双向断言」
+- 「★ CM6 的选区绘制层（`.cm-scroller` 内的 `.cm-selectionLayer`，负 z-index）位于行元素背景之下，行元素背景必须保持半透明——原因：`highlightActiveLine` 的活动行若使用不透明表面色（如 `--surface-hover`），当前行的选区会被整层遮住，单行鼠标选取完全无视觉反馈；修复为约 4% 的 `--editor-active-line`（2026-09-10），行号槽活动行样式不受影响」
 - 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
 
 - 「文档保存采用同目录临时文件 + 原文件权限 + `Sync()` + `Rename` 的最佳努力替换，并先解析符号链接真实目标」——原因：写入、刷盘或改名失败时清理临时文件并保留旧目标，保存链接不会把链接替换成普通文件；目标目录必须具备创建/改名权限，权限不足时保持失败而不回退到截断覆写；不宣称 Windows 与底层文件系统具备跨平台绝对断电原子性
@@ -159,6 +161,7 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-10 文本选中高亮修复采用「独立选区令牌 + 活动行半透明层」最短差分：新增 `--selection-bg`（暗 `rgba(37, 99, 235, 0.45)` / 亮 `#bfdbfe`）与 `--editor-active-line`（约 4% 半透明）语义令牌，外壳、预览令牌与两侧 `::selection` 单点收敛；删除 `lightSyntax` 中被外壳规则完全覆盖的冗余选区声明，避免双源——理由：`--accent-soft` 是弱强调令牌（暗 18% / 亮近白），文本选区需要中高对比，两者视觉职责正交；活动行原用不透明 `--surface-hover`，遮蔽 CM6 选区层是单行选取无反馈的根因。由 uiContract 静态断言与 startup.check.mjs 无头用例（选区矩形、活动行 alpha < 1、双主题计算色）共同守护。未采用提升选区层 z-index（会盖住文字造成模糊）或仅改外壳样式（预览区选区仍不可见）
 - 2026-09-09 批判性修复 09-09-v1 审计遗留问题采用最短有效差分：
   1. 状态栏文案彻底中文收敛：修复 `loadContent` 与 `newFile` 中硬编码英文 `'Ready'` 为 `'就绪'`；
   2. 契约测试补齐负向防御：`uiContract.test.mjs` 补充对 `'Ready'`、`'Unsaved changes'`、`'Render error'`、`'Save failed'`、`'Open failed'` 等退役状态文案的 `hasNot` 校验，杜绝测试假阳性；
