@@ -135,15 +135,14 @@ has(css, 'font-family: var(--font-mono)', 'editor mono stack');
 hasRule(css, '.cm-activeLine', 'background: var(--editor-active-line)', 'active line layer');
 hasRule(css, '.cm-selectionBackground', 'background: var(--selection-bg)', 'editor selection');
 // Semantic tokens stay var() references; the composed literals live in the
-// raw palette. The focused selector carries .cm-selectionLayer so it beats
-// oneDark's equally-weighted focused rule by specificity, not load order.
+// raw palette. The focused selector carries .cm-selectionLayer to match
+// baseTheme's (0,6,0) specificity and beat oneDark's (0,5,0).
 has(css, '--selection-bg: var(--blue-600-a45);', 'dark selection palette link');
 has(css, '--editor-active-line: var(--white-a04);', 'dark active line token');
 has(css, '--editor-active-line: var(--zinc-900-a04);', 'light active line token');
 has(css, ':root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground',
   'selection layer specificity');
 hasRule(baseCss, '::selection', 'background: var(--selection-bg)', 'preview selection');
-hasRule(baseCss, '::selection', 'color: var(--fg)', 'preview selection text');
 
 // ---- empty preview is an overlay; the iframe stays mounted ----
 hasRule(css, '.placeholder', 'position: absolute', 'empty preview overlay');

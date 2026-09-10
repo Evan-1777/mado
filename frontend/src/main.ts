@@ -1173,9 +1173,17 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
     syncGutterVisibility();
     // The editor column is display:none in preview mode. Showing it again
     // invalidates CodeMirror's viewport measurement, and it only picks that
-    // up through async observers; measure now so a selection or scroll
-    // dispatched right after the switch uses the real geometry.
-    if (mode !== 'preview') cm.requestMeasure();
+    // up through async observers (with up to 75ms debounce). Measure synchronously
+    // now so any selection, scroll, or external dispatch immediately following
+    // the switch uses valid geometry.
+    if (mode !== 'preview') {
+      const view = cm as unknown as { measure?: () => void; requestMeasure: () => void };
+      if (typeof view.measure === 'function') {
+        view.measure();
+      } else {
+        cm.requestMeasure();
+      }
+    }
     if (isTocSidebarVisible() && tocDirty) {
       renderToc();
     }

@@ -210,18 +210,12 @@ const scenario = `<script>
     document.querySelector('.seg button[data-mode="editor"]').click();
     const view = editorView();
     view.focus();
-    // The editor column was display:none until the click above, and the view
-    // only re-measures through async Intersection/ResizeObserver callbacks
-    // (the resize path even skips within 75ms of a DOM update). A selection
-    // dispatched into the stale 0x0 measurement draws no markers at all, and
-    // the dispatch's own redraw is queued as a measure request drained on an
-    // animation frame, which headless virtual time does not reliably
-    // deliver. measure() is internal but synchronous, so it both prepares
-    // the geometry and flushes the draw; it stays behind the same
-    // private-API boundary as the view lookup above.
-    view.measure();
+    // The mode switch handler in main.ts synchronously measures the editor
+    // view upon showing it, ensuring non-zero geometry immediately. Dispatch
+    // the selection and query layout coords to verify the selection marker
+    // renders and positions correctly without racing.
     view.dispatch({ selection: { anchor: 2, head: 6 } });
-    view.measure();
+    view.coordsAtPos(2);
     await waitFor(() => document.querySelector('.cm-selectionBackground'));
     const selectionColor = () =>
       getComputedStyle(document.querySelector('.cm-selectionBackground')).backgroundColor;

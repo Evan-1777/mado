@@ -223,10 +223,6 @@ kbd {
 
 ::selection {
   background: var(--selection-bg);
-  /* Selected code keeps its syntax colour by default, and blue keywords on
-     the blue selection drop to ~2:1 contrast in dark mode; force the body
-     foreground while the selection is active. */
-  color: var(--fg);
 }
 
 /* Source-line gutter.

@@ -812,10 +812,11 @@ body {
   border-left-color: var(--accent);
 }
 
-/* The layer class in the focused selector is deliberate: oneDark's focused
-   selection rule carries the same weight as a two-class form, so the extra
-   class is what makes this rule win by specificity instead of stylesheet
-   load order. */
+/* CodeMirror baseTheme and oneDark inject their styles into document.head via
+   style-mod at runtime. The focused selector includes .cm-selectionLayer to
+   match baseTheme's (0,6,0) specificity and beat oneDark's (0,5,0); together
+   with the shell stylesheet's downstream document cascade order, this ensures
+   deterministic override of editor selection backgrounds. */
 :root[data-theme] .cm-editor .cm-selectionBackground,
 :root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground {
   background: var(--selection-bg);
