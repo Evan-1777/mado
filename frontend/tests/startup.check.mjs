@@ -195,12 +195,33 @@ const scenario = `<script>
     // a single-line selection vanishes while the active line is opaque.
     // Assert the marker exists, overlaps the active line without being
     // covered by it, and resolves to the shared selection token in both
-    // themes. The view is reached the same way EditorView.findFromDOM does.
+    // themes.
+    //
+    // The view is reached through CodeMirror's tile internals (the same path
+    // EditorView.findFromDOM walks). That is not public API: keep the lookup
+    // in one place so a CodeMirror upgrade fails with a clear message here
+    // instead of an obscure TypeError further down.
+    const editorView = () => {
+      const view = document.querySelector('.cm-content')?.cmTile?.root?.view;
+      if (!view) throw new Error('cannot reach the CodeMirror view (cmTile internals changed)');
+      return view;
+    };
     stage = 'selection-visibility';
     document.querySelector('.seg button[data-mode="editor"]').click();
-    const view = document.querySelector('.cm-content').cmTile.root.view;
+    const view = editorView();
     view.focus();
+    // The editor column was display:none until the click above, and the view
+    // only re-measures through async Intersection/ResizeObserver callbacks
+    // (the resize path even skips within 75ms of a DOM update). A selection
+    // dispatched into the stale 0x0 measurement draws no markers at all, and
+    // the dispatch's own redraw is queued as a measure request drained on an
+    // animation frame, which headless virtual time does not reliably
+    // deliver. measure() is internal but synchronous, so it both prepares
+    // the geometry and flushes the draw; it stays behind the same
+    // private-API boundary as the view lookup above.
+    view.measure();
     view.dispatch({ selection: { anchor: 2, head: 6 } });
+    view.measure();
     await waitFor(() => document.querySelector('.cm-selectionBackground'));
     const selectionColor = () =>
       getComputedStyle(document.querySelector('.cm-selectionBackground')).backgroundColor;

@@ -30,6 +30,12 @@
   --red-600: #dc2626;
   --red-700: #b91c1c;
   --success: #16a34a;
+  /* Translucent steps of the same palette: a solid swatch cannot express
+     alpha, so the composed literals live here and every semantic token
+     below stays a var() reference. */
+  --blue-600-a45: rgba(37, 99, 235, 0.45);
+  --white-a04: rgba(255, 255, 255, 0.04);
+  --zinc-900-a04: rgba(24, 24, 27, 0.04);
 
   /* ---- elevation ---- */
   --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -61,10 +67,10 @@
   --surface-hover: var(--zinc-800);
   /* Text selection needs mid/high contrast; the weak accent stays on badges
      and active toolbar buttons, so the two roles get separate tokens. */
-  --selection-bg: rgba(37, 99, 235, 0.45);
+  --selection-bg: var(--blue-600-a45);
   /* CodeMirror paints the selection under the line elements, so the active
      line must stay translucent or it hides the selection on that line. */
-  --editor-active-line: rgba(255, 255, 255, 0.04);
+  --editor-active-line: var(--white-a04);
   --text: var(--zinc-100);
   --text-dim: var(--zinc-400);
   --border: var(--zinc-800);
@@ -106,7 +112,7 @@
   --surface-glass: rgba(255, 255, 255, 0.86);
   --surface-hover: var(--zinc-100);
   --selection-bg: var(--blue-200);
-  --editor-active-line: rgba(24, 24, 27, 0.04);
+  --editor-active-line: var(--zinc-900-a04);
   --text: var(--zinc-900);
   --text-dim: var(--zinc-500);
   --border: var(--zinc-200);
@@ -806,8 +812,12 @@ body {
   border-left-color: var(--accent);
 }
 
+/* The layer class in the focused selector is deliberate: oneDark's focused
+   selection rule carries the same weight as a two-class form, so the extra
+   class is what makes this rule win by specificity instead of stylesheet
+   load order. */
 :root[data-theme] .cm-editor .cm-selectionBackground,
-:root[data-theme] .cm-editor.cm-focused .cm-selectionBackground {
+:root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground {
   background: var(--selection-bg);
 }
 

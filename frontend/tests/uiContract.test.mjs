@@ -35,6 +35,7 @@ function hasRule(source, selector, declaration, what) {
 // ---- palette: raw tokens are the only place a literal color may live ----
 const base = {
   '--white': '#ffffff',
+  '--white-a04': 'rgba(255, 255, 255, 0.04)',
 };
 const zinc = {
   '--zinc-50': '#fafafa',
@@ -48,12 +49,14 @@ const zinc = {
   '--zinc-800': '#27272a',
   '--zinc-900': '#18181b',
   '--zinc-950': '#09090b',
+  '--zinc-900-a04': 'rgba(24, 24, 27, 0.04)',
 };
 const state = {
   '--blue-50': '#eff6ff',
   '--blue-200': '#bfdbfe',
   '--blue-400': '#60a5fa',
   '--blue-600': '#2563eb',
+  '--blue-600-a45': 'rgba(37, 99, 235, 0.45)',
   '--blue-700': '#1d4ed8',
   '--red-50': '#fef2f2',
   '--red-600': '#dc2626',
@@ -131,9 +134,16 @@ has(css, 'font-family: var(--font-mono)', 'editor mono stack');
 // and the selection token must be the high-contrast one, not --accent-soft.
 hasRule(css, '.cm-activeLine', 'background: var(--editor-active-line)', 'active line layer');
 hasRule(css, '.cm-selectionBackground', 'background: var(--selection-bg)', 'editor selection');
-has(css, '--editor-active-line: rgba(255, 255, 255, 0.04);', 'dark active line token');
-has(css, '--editor-active-line: rgba(24, 24, 27, 0.04);', 'light active line token');
+// Semantic tokens stay var() references; the composed literals live in the
+// raw palette. The focused selector carries .cm-selectionLayer so it beats
+// oneDark's equally-weighted focused rule by specificity, not load order.
+has(css, '--selection-bg: var(--blue-600-a45);', 'dark selection palette link');
+has(css, '--editor-active-line: var(--white-a04);', 'dark active line token');
+has(css, '--editor-active-line: var(--zinc-900-a04);', 'light active line token');
+has(css, ':root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground',
+  'selection layer specificity');
 hasRule(baseCss, '::selection', 'background: var(--selection-bg)', 'preview selection');
+hasRule(baseCss, '::selection', 'color: var(--fg)', 'preview selection text');
 
 // ---- empty preview is an overlay; the iframe stays mounted ----
 hasRule(css, '.placeholder', 'position: absolute', 'empty preview overlay');
