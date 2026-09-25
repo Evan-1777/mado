@@ -55,4 +55,10 @@ if (rebuilt[0].expanded !== false || rebuilt[1].expanded !== true) {
   throw new Error('duplicate heading expansion states were not restored independently');
 }
 
+const crlfMarkdown = [fence, '## inside fence', fence, '## After CRLF fence'].join('\r\n');
+const crlfToc = flattenToc(parseToc(crlfMarkdown));
+if (JSON.stringify(crlfToc.map(({ text, line }) => ({ text, line }))) !== JSON.stringify([{ text: 'After CRLF fence', line: 3 }])) {
+  throw new Error('CRLF fence closure mismatch: ' + JSON.stringify(crlfToc));
+}
+
 console.log('TOC parsing, mapping, and repeated-heading state self-check: OK');

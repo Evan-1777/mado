@@ -16,7 +16,7 @@ export function parseToc(markdownText: string): TocNode[] {
   let fenceLength = 0;
   let nextId = 0;
 
-  for (const [lineIndex, line] of markdownText.split('\n').entries()) {
+  for (const [lineIndex, line] of markdownText.replace(/\r\n/g, '\n').split('\n').entries()) {
     const marker = fencePattern.exec(line);
     if (fenceChar) {
       if (marker && marker[1][0] === fenceChar && marker[1].length >= fenceLength && /^[ \t]*$/.test(marker[2])) {
