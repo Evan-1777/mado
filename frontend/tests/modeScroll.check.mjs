@@ -85,7 +85,15 @@ const scenario = `<script>
       const scroller = document.querySelector('.cm-editor .cm-scroller');
       document.querySelector('[data-mode="editor"]').click();
       await wait(60);
-      scroller.scrollTop = 3000;
+      // Position the view through CodeMirror's own scrolling contract: writing
+      // scroller.scrollTop directly leaves CodeMirror's viewport unaware of the
+      // new offset, and the next measure then re-anchors the view. dispatch()
+      // is how a scroll is represented to the editor, and the effect lands on
+      // the following measure, so wait for it before reading the offset.
+      const view = document.querySelector('.cm-content')?.cmTile?.root?.view;
+      if (!view) throw new Error('cannot reach the CodeMirror view');
+      view.dispatch({ selection: { anchor: view.state.doc.line(400).from }, scrollIntoView: true });
+      for (let i = 0; i < 40 && scroller.scrollTop === 0; i++) await wait(25);
       const before = scroller.scrollTop;
       document.querySelector('[data-mode="preview"]').click();
       await wait(80);

@@ -155,7 +155,8 @@ const scenario = `<script>
       ok: modeButtons.length === 3 &&
         modeButtons.filter((btn) => btn.getAttribute('aria-selected') === 'true').length === 1 &&
         modeButtons[0].getAttribute('aria-selected') === 'true' &&
-        ['preview', 'editor', 'split'].every((mode) =>
+        modeButtons[0].dataset.mode === 'editor' &&
+        ['editor', 'preview', 'split'].every((mode) =>
           document.querySelector('.seg button[data-mode="' + mode + '"]')),
     });
     results.push({

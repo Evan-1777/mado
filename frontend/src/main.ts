@@ -114,16 +114,16 @@ const toolbar = document.createElement('div');
 toolbar.className = 'toolbar';
 toolbar.innerHTML = `
   <div class="seg" role="tablist">
-    <button class="active" id="tab-preview" data-mode="preview" role="tab" aria-selected="true" aria-controls="preview-col">预览</button>
-    <button id="tab-editor" data-mode="editor" role="tab" aria-selected="false" aria-controls="editor-col">编辑</button>
+    <button class="active" id="tab-editor" data-mode="editor" role="tab" aria-selected="true" aria-controls="editor-col">编辑</button>
+    <button id="tab-preview" data-mode="preview" role="tab" aria-selected="false" aria-controls="preview-col">预览</button>
     <button id="tab-split" data-mode="split" role="tab" aria-selected="false" aria-controls="preview-col editor-col">分栏</button>
   </div>
   <div class="status"><span class="dot"></span><span id="status-text">就绪</span></div>
 `;
 
 const pane = document.createElement('main');
-// Starts in Preview (the first toolbar tab is the default mode).
-pane.className = 'pane preview-only';
+// Starts in Editor (the first toolbar tab is the default mode).
+pane.className = 'pane editor-only';
 pane.innerHTML = `
   <aside class="toc-sidebar collapsed" id="toc-sidebar" aria-label="文档目录">
     <div class="toc-header">

@@ -198,11 +198,17 @@ has(html, 'src="./app.js"', 'bundle asset path');
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
-for (const [mode, label] of [['preview', '预览'], ['editor', '编辑'], ['split', '分栏']]) {
+for (const [mode, label] of [['editor', '编辑'], ['preview', '预览'], ['split', '分栏']]) {
   if (!new RegExp(`data-mode="${mode}"[^>]*aria-selected="(?:true|false)"[^>]*>${label}<`).test(ts)) {
     fail(`mode tab ${mode}: missing Chinese label "${label}" with aria-selected`);
   }
 }
+// Editor is the first tab and therefore the mode the window starts in: the
+// initial pane class and the selected tab must agree with that order.
+const firstMode = ts.match(/data-mode="(preview|editor|split)"/);
+if (firstMode?.[1] !== 'editor') fail(`first mode tab: expected editor, got ${firstMode?.[1]}`);
+has(ts, 'data-mode="editor" role="tab" aria-selected="true"', 'editor tab starts selected');
+has(ts, "'pane editor-only'", 'initial pane class');
 for (const copy of ['暂无预览内容', '当前文档暂无标题', '就绪', '未保存', '已保存', '打开失败', '保存失败', '渲染失败']) {
   has(ts, copy, 'user-facing copy');
 }
