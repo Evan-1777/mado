@@ -1,18 +1,17 @@
 ---
-name: clean-refactoring
+name: engineering-discipline
 description: >-
-  Universal engineering philosophy and operational discipline for Agent production
-  across all domains: coding, bug fixing, system architecture, API design, prompt
-  engineering, and workflow rules. Enforces root-cause structural resolution over
-  reactive patching, normative & restrained design over defensive edge-case bloat,
-  minimal blast radius, and shortest working diffs. Use whenever planning,
-  implementing, reviewing, or refactoring code, rules, workflows, prompts, APIs,
-  or systems.
+  Engineering discipline for changing existing work. Resolve root causes at the
+  structural source instead of patching symptoms at the call sites; keep design
+  normative and restrained instead of defensively bloated; hold the blast radius
+  small and prefer the shortest working diff. Load whenever modifying or
+  maintaining code (frontend or backend) or documentation — bug fixes,
+  refactors, rule/prompt/workflow edits, doc updates.
 ---
 
-# 规范重构与通用生产哲学 (Clean Refactoring & Engineering)
+# 工程纪律与通用生产哲学 (Engineering Discipline)
 
-本技能确立了 Agent 在**所有工程与生产领域**（代码编写、Bug 修复、架构演进、API 设计、规则/提示词编写、系统配置）中的通用设计哲学与行动准则。
+本技能约束 Agent 对**既有代码与文档的一切修改与维护**（前后端代码、Bug 修复、架构演进、API 设计、规则/提示词/工作流编辑、文档更新）中的通用设计哲学与行动准则。
 
 ---
 

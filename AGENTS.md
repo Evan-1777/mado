@@ -116,7 +116,7 @@
 
 ## Subagent 定义
 
-以下 subagent 定义于 `.pi/agents/`，可被工作流引用（如 Main-Split）或用户直接通过 `subagent_type` 调用。
+以下 subagent 定义于 `.pi/agents/`，任意工作流均可引用，用户也可直接通过 `subagent_type` 调用。
 
 | Agent | 文件 | 职责 | 默认模型 |
 |-------|------|------|---------|
@@ -126,10 +126,24 @@
 ### 通用约定
 
 所有 subagent 共享：
-- `inherit_context: false` — 隔离会话；单次 spawn，禁止逐 Task 多开
+- **Prompt 格式**：调用时优先用工作流模板覆盖或替换 Agent 工具的默认提示词格式；若工具接口强制要求特定格式且无法替换，保留该格式，并在其后附加完整的工作流提示词模板内容，确保目标、上下文、边界和报告要求均传达。
+- `inherit_context: false` — 隔离会话；以目标为单位委托，允许并行多开，同一时刻不超过 3 个
+- **嵌套**：subagent 仅由主线 spawn，被委托方不得再 spawn subagent——任务须在单层内完成
 - 执行中不与主 Agent 通信；遇障碍 `advisor` → 自行决策 → 继续；整链结束后 return 最终报告
 - **Model**：由调用端传入，定义中禁止硬编码
 - **thinking**：`off / minimal / low / medium / high / xhigh`（`med`=`medium`），默认 `high`
+
+### 使用约束
+
+subagent 以 `inherit_context: false` 隔离运行：不继承当前会话上下文，主 Agent 与子 Agent 之间为一次性交付——传递完整输入、回收最终报告，中途无法通信。
+
+是否委托按以下方面权衡：
+
+- **任务复杂度**：任务越庞大、链路越长、越能独立成篇，委托收益越高；越琐碎越短，主线自行处理越直接。
+- **任务上下文关联程度**：目标越能被独立界定、越不依赖当前会话已有的推演与决策，越适合委托；越依赖主线上下文与多轮交互，越应由主线自行处理。
+- **经济效益**：任务所需的项目上下文越庞大复杂，越无法在 prompt 中交代完整，subagent 就得自行重读，这部分 Token 无法回流主线；任务耗时越长，主线空等越久，越可能使主 Agent 缓存失效。委托收益需覆盖这两项成本，并行多开时成倍放大。
+
+是否使用是权衡而非义务：不盲目调用，也不因成本而回避；委托前把被委托方需要的信息补全。以目标为单位委托，允许并行多开，同一时刻运行的 subagent 不超过 3 个，超出时排队或合并。
 
 ### explore
 
@@ -139,7 +153,7 @@ Spawn prompt 模板：
 ```
 Goal: {one-line goal}
 Read: Project.md, SCOPE.md, Plan.md, Tasks.md (.docs/ or root).
-Rules: read-only, no edits; return structured findings in explore format.
+Rules: read-only, no edits; no subagents; return structured findings in explore format.
 ```
 
 ### executor
@@ -150,67 +164,45 @@ Spawn prompt 模板：
 ```
 Goal: {one-line goal}
 Read: Project.md, SCOPE.md, Plan.md, Tasks.md (.docs/ or root).
-Rules: no parent channel; on blockers call advisor; return executor format report.
+Rules: no parent channel; no subagents; on blockers call advisor; return executor format report.
 ```
 
 ## 工作流组合
 
-> **关键词冲突规则**：当输入同时匹配多个工作流关键词时，取更具体（更长）的匹配。例如含 "Main-Split" 或 "Main-hybrid" 时匹配具体工作流，不再匹配 Main。
+> **关键词冲突规则**：当输入同时匹配多个工作流关键词时，取更具体（更长）的匹配。例如含 "Main-hybrid" 时匹配具体工作流，不再匹配 Main。
 
 - **Main**（用户输入含 "Main"）：`Explore → Plan → Formulate Tasks → Execute → Test → Document Maintenance → Archive → Git Commit`
 - **Init**（用户输入含 "Init"）：`Explore → 生成/更新 Project.md → Git Commit`
-  - 用于新项目建立基线文档或旧项目文档刷新。Explore 后基于代码库实际状态，按 `Project.example.md` 模板生成或更新 `.docs/Project.md`。
-  - **流程**：
-    1. 读 `.docs/SCOPE.md`（或根目录）与 `.docs/Project.example.md`
-    2. **Explore**：检索代码库结构、依赖、约定、架构（空项目跳过）
-    3. 按模板填充 Project.md：概述、环境、目录结构、架构、约定、约束等章节，占位项填实、无内容节删除
-    4. Git Commit
-  - 适用：`git init` 后立即 Init 建立基线；项目演进后文档脱节时 Init 刷新
-- **Main-Split**（用户输入匹配 `Main-Split` 触发格式）：`Explore → Plan → Formulate Tasks → Execute → Test → Document Maintenance → Archive → Git Commit`
-  - Explore 可委托 explore agent，Execute~Git Commit 委托 executor agent。Subagent 通用约定（inherit_context、自治、advisor、model/thinking 规则等）见 [Subagent 定义](#subagent-定义)。
-
-  #### 流程
-
-  1. **项目上下文**：主 Agent 读 `.docs/Project.md` 与 `.docs/SCOPE.md`（或根目录）——**始终执行，跳步即违规**
-  2. **Explore**：指定 explore 模型时 spawn explore agent → 读其报告；否则主 Agent 自行执行
-  3. **Plan → Formulate Tasks**：产出 Plan.md、Tasks.md
-  4. **Execute ~ Git Commit**：spawn executor agent 执行全链
-  5. **轻量审阅**：只读 executor 最终报告，禁止重跑 Test
-
-  #### 触发格式
-
-  | 格式 | explore | executor |
-  |------|---------|----------|
-  | `Main-Split` | 主模型 | haiku+high |
-  | `Main-Split:<Model>(thinking)` | 主模型 | 指定 |
-  | `Main-Split(explore:<M>(t) executor:<M>(t))` | 指定 | 指定 |
-  | `Main-Split(<M>(t),<M>(t))` | 第一个 | 第二个 |
-  | `Main-Split(<M>(t))` | 指定 | haiku+high（默认） |
-  | `Main-Split(,<M>(t))` | 主模型（默认） | 指定 |
-
-  - thinking 取值规则见 [Subagent 定义](#subagent-定义)
-  - **Tasks.md 硬约束**：验收标准须可被「运行命令 + 看输出」机械验证
+  - **流程**：读 `.docs/SCOPE.md` 与 `Project.example.md`，Explore 代码库结构与约定（空项目跳过），按模板填充 `.docs/Project.md`，再提交
+  - **适用**：`git init` 后建立基线；项目演进后文档脱节时刷新
 - **Main-hybrid**（用户输入含 "Main-hybrid"）：`Explore → Plan → Formulate Tasks` ‖ `Explore-lite → Execute → Test → Document Maintenance → Archive → Git Commit`
-  - 将前期规划（Explore → Formulate Tasks）与后续交付（Explore-lite → Git Commit）拆分为以 `‖` 为界的两个独立阶段，用于跨模型/跨工具协同交付（如高推理模型规划 + 高性价比/编码模型执行）：
-  - **前期规划**：在 Explore 前按名称加载 `clean-refactoring` 作为当前规划会话的临时上下文，不写入全局工作流要求。深度阅读 SCOPE.md、Project.md 与代码库文件，制定全局考量的 Plan.md 与高精度、可机械验证的 Tasks.md。**Formulate Tasks 产出 Tasks.md 后必须立即停止并结束当前回复，等待交接，禁止继续执行后续交付阶段。**
-  - **后续交付**：由接手的执行模型在下一轮对话或新工具会话中启动；接手模型依据落盘的 SCOPE、Project、Plan 与 Tasks 建立上下文，不依赖前一会话的临时注入：
-    - **Explore-lite**：执行模型载入上下文（SCOPE/Project/Plan/Tasks）后进行的轻量探索，聚焦查阅当前 Plan 与 Task 关联的源文件与调用链，快速建立必备的项目细节知识以准确理解并执行任务。
-    - **Execute ~ Git Commit**：依次执行 Task、验证、维护文档、归档并提交。
-  - 适用：跨模型智商梯度调度（高推理模型做规划 + 高性价比/编码模型做执行）、跨 Agent 工具协同交付。
+  - **规划段**：以 `engineering-discipline` 为会话临时上下文，深读 SCOPE / Project 与代码库，产出 Plan.md 与可机械验证的 Tasks.md
+  - **交接**：Tasks.md 产出后立即结束当前回复，等待接手模型，不继续交付阶段
+  - **交付段**：接手模型依据落盘文档建立上下文、不依赖上一会话；Explore-lite 聚焦 Plan / Task 关联的源文件与调用链，随后执行至归档提交
+  - **适用**：跨模型智商梯度调度、跨 Agent 工具协同交付
+- **Frontend**（用户输入含 "Frontend"）：`Explore → Plan → Formulate Tasks` ‖ `Explore-lite → Execute → Test → Document Maintenance → Archive → Git Commit`
+  - **规划段**：整体沿用 Main-hybrid；Plan 阶段额外在项目目录 `temp/` 产出前端变更 Demo（静态 HTML，浏览器直接打开）——复杂任务局部组件可用色块占位替代，重点内容重点展示；简单任务直接完整展示
+  - **交接**：Tasks.md 与 Demo 产出后立即结束当前回复，等待接手模型，不继续交付阶段
+  - **交付段**：整体沿用 Main-hybrid；实现按 `frontend-design` 选定设计哲学执行，遵循 `production-frontend` 成品级表面要求
+  - **要点**：本工作流以排版与组件关系设计为核心特点，Demo 与最终实现均须保证整体设计美观和谐
+  - **适用**：前端页面 / 组件变更的跨模型调度交付
 - **Quick**（用户输入含 "Quick"）：`Explore → Formulate Tasks → Execute → Document Maintenance → Archive → Git Commit`
-  - 跳过 Plan，Task 粒度更细，单 Task 修改不超过 3 个文件，禁止跨模块大重构
+  - **要点**：跳过 Plan；Task 粒度更细，单 Task 修改不超过 3 个文件，禁止跨模块大重构
 - **Fast**（用户输入含 "Fast"）：`Explore → Plan（轻量）→ Execute → Document Maintenance → Git Commit`
-  - Plan（轻量）：对齐方向的内联讨论，不产出 Plan.md / Tasks.md 文件
-  - 跳过 Formulate Tasks 与 Test
-  - 适用小范围、理解清晰的变更
+  - **要点**：Plan 为内联讨论、不产出文档；跳过 Formulate Tasks 与 Test
+  - **适用**：小范围、理解清晰的变更
 - **Quality**（用户输入含 "Quality"）：`Explore（深入）→ Interview → Plan（需审核）→ Formulate Tasks → Execute → Test → Document Maintenance → Archive → Git Commit`
-  - Explore（深入）：扩大文件检索范围，深入阅读关联模块，收集完整上下文
-  - Plan：产出正式计划文档，须经用户审核通过后方可进入后续阶段
-- **Brainstorm**（用户输入含 "Brainstorm" 或 "头脑风暴"）：`Explore（深入）→ Interview → Brainstorm`
-  - Explore（深入）：扩大文件检索范围，深入阅读关联模块，收集完整上下文
-  - Brainstorm：产出自由形式分析讨论，不产出 Plan.md / Tasks.md
-  - 终止于此，无后续执行阶段
-  - 适用需求模糊、架构选型、方案比对、探索性分析
+  - **要点**：Explore 扩大检索与阅读范围；Plan 产出正式文档，须用户审核通过后方可继续
+- **Review**（用户输入含 "Review" 或"复审"）：只读质量审计，不修改文件、不产出 Plan / Tasks
+  - **范围**：用户自然语言指定优先，未指定时按默认范围
+  - **默认范围**：根目录存在未归档 `Plan.md` / `Tasks.md` 时，审核其能否直接落地执行、有无漏洞与考虑不周；否则审核最近一次归档交付的实际改动（代码、内容与任务质量）
+  - **基准**：按名称加载 `engineering-discipline`
+  - **理念**：不吹毛求疵，不提倡过度安全防御；问题须指向实际风险与根因
+  - **报告**：自然语言陈述问题、位置、判定依据与修改建议，须有证据支撑；结论为 100 分制评分并说明扣分依据
+  - **复审**：逐条核销上次问题并回填证据
+- **Brainstorm**（用户输入含 "Brainstorm" 或"头脑风暴"）：`Explore（深入）→ Interview → Brainstorm`
+  - **要点**：Explore 扩大检索与阅读范围；产出自由形式分析讨论，不产出 Plan.md / Tasks.md，无后续执行阶段
+  - **适用**：需求模糊、架构选型、方案比对、探索性分析
 
 ## 通用约束
 

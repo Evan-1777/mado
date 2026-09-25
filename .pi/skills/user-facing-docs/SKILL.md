@@ -1,29 +1,38 @@
 ---
 name: user-facing-docs
 description: >-
-  Writing rules for user-facing Markdown documents (reports, summaries,
-  docs, replies). Bans forced drama, fake suspense, empty emphasis and
-  redundant modifiers; requires objective neutral statements, fluent
-  natural flow, deliberate logical hierarchy and concreteness; refactor
-  instead of patching. Covers visual presentation: users expect to SEE
-  structured HTML visuals in documents, so actively embed self-contained
-  HTML fragments (flowcharts, architecture/state diagrams, comparison
-  matrices, info cards, collapsible sections) to raise document quality.
-  Rewrite examples are included inline. MUST read before writing any
-  user-facing Markdown.
+  Writing rules for text an end user reads. Load by default whenever composing a
+  user-facing reply: bans forced drama, fake suspense, empty emphasis and
+  redundant modifiers; requires objective neutral statements, fluent natural
+  flow, deliberate logical hierarchy and concreteness; refactor instead of
+  patching. When the deliverable is an actual Markdown document file, the
+  visualization rules activate as well — embed self-contained HTML fragments
+  (flowcharts, architecture/state diagrams, comparison matrices, info cards,
+  collapsible sections) instead of describing structure in prose. Rewrite
+  examples are included inline. MUST read before writing any user-facing
+  Markdown.
 ---
 
-# 面向用户的 Markdown 文档：写作与呈现守则
+# 面向用户的文字与文档：写作与呈现守则
 
-写给用户看的 MD 文档（报告、总结、说明、回复）的完整守则：先保证文字质量（怎么写），再决定呈现方式（怎么排版）。动笔前先读完本守则。
+写给用户看的文字分两层约束。**第一层（始终生效）** 管所有用户可见文字的质量：对话回复、说明、总结、文档。**第二层（仅撰写文档文件时激活）** 管落盘 Markdown 文档内的 HTML 可视化。动笔前先读完本守则。
+
+## 生效范围
+
+| 产出物 | 第一层 文字质量 | 第二层 HTML 可视化 |
+|---|---|---|
+| 回给用户的正文：回复、说明、总结、结论 | 生效 | 不激活 |
+| 落盘交付的 Markdown 文档文件（报告、方案、README、docs/） | 生效 | 激活 |
+
+对话回复用文字、列表与表格表达，HTML 片段只出现在文档文件里。用户明确要求在回复中带可视化时，按需求处理。
+
+# 第一层：文字质量（所有用户可见文字）
 
 ## 核心理念
 
-文档以客观陈述为主：事实说清，判断给依据，不靠语气制造张力。读者信任准确的信息，信息本身的分量胜过任何修饰。
+文字以客观陈述为主：事实说清，判断给依据，不靠语气制造张力。读者信任准确的信息，信息本身的分量胜过任何修饰。
 
-结构服务于逻辑：先想清楚信息之间的关系（并列、递进、因果），再落笔。层次清晰的文档，读者一遍能读懂，不需要回头重理。
-
-HTML 可视化是文档质量的组成部分：同样的信息，画出来比写出来更省读者的时间。文字负责说清，可视化负责让人看见。
+结构服务于逻辑：先想清楚信息之间的关系（并列、递进、因果），再落笔。层次清晰的文字，读者一遍能读懂，不需要回头重理。
 
 ## 一、文字质量：红线（禁用）
 
@@ -43,17 +52,21 @@ HTML 可视化是文档质量的组成部分：同样的信息，画出来比写
 - **标题直说内容**（"成本对比"而非"深入分析"）。
 - **排版朴素**：少加粗、少列表堆砌、少破折号与引号。
 
+# 第二层：文档文件（撰写落盘 Markdown 时激活）
+
+HTML 可视化是文档质量的组成部分：同样的信息，画出来比写出来更省读者的时间。文字负责说清，可视化负责让人看见。
+
 ## 三、呈现方式：用户期待可视化
 
 HTML 可视化是用户期待看见的能力，不是可选装饰。用户打开一份文档，期望直接**看到**流程怎么走、方案差在哪、数据长什么样，而不是从文字里自己脑补。
 
 - **主动寻找可可视化的内容**：每个信息块先问"能不能画出来"。流程、架构、状态转换、多维对比、字段聚合、层级、数据分布——能画就画，别只描述。
-- **默认优先 HTML 呈现**：先假设用 HTML，朴素文本仅当 HTML 无增益时（简单枚举、顺序步骤、一句话叙述）才用。
+- **文档内默认优先 HTML 呈现**：先假设用 HTML，朴素文本仅当 HTML 无增益时（简单枚举、顺序步骤、一句话叙述）才用。
 - **主动用 ≠ 滥用**：使用频率上主动，审美上仍克制（见「默认风格」），结构上仍服务信息（见「红线」）。
 
 ## 四、呈现方式：结构决策
 
-按内容类型选呈现方式。默认优先 HTML，以下类型用 HTML 显著更优：
+按内容类型选呈现方式。文档文件内默认优先 HTML，以下类型用 HTML 显著更优：
 
 | 内容类型 | 呈现方式 |
 |---|---|
@@ -86,7 +99,7 @@ HTML 可视化是用户期待看见的能力，不是可选装饰。用户打开
 2. 图形仅限流程图、架构图、状态机、树状层级、对比矩阵、数据图表等；禁止装饰性插画、氛围图、图标。
 3. HTML 块内的 URL 须避免被渲染为可点击超链接（置于代码块或纯文本中）。
 4. 每个可视化片段须服务于具体信息需求，兼顾 Token 效率与渲染稳定性，避免过度设计。
-5. 本技能仅约束写给用户看的 Markdown 文档；用户明确要求开发 HTML/前端交付物时，按交付需求处理，不受上述限制。
+5. 本节只约束文档文件中的可视化；用户明确要求开发 HTML/前端交付物时，按交付需求处理，不受本限制。
 
 ## 八、文档维护：重构，不打补丁
 
@@ -97,9 +110,9 @@ HTML 可视化是用户期待看见的能力，不是可选装饰。用户打开
 
 ## 交付前自查
 
-**文字自查**：通读一遍，检查语气是否克制——有没有靠感叹、反问、夸张制造紧张感的地方，有没有主观强化词，有没有贴标签式强调；连接词是否都承担了逻辑功能。对照「附录」改写。
+**文字自查**（所有用户可见文字）：通读一遍，检查语气是否克制——有没有靠感叹、反问、夸张制造紧张感的地方，有没有主观强化词，有没有贴标签式强调；连接词是否都承担了逻辑功能。对照「附录」改写。
 
-**可视化自查**：
+**可视化自查**（仅文档文件）：
 - 有没有"值得画却没画"的内容？有就补上。
 - 每个 HTML 块是否直接服务信息？风格是否与全文统一（同边框色、同圆角、同字号）？
 
