@@ -98,10 +98,10 @@ titlebar.className = 'titlebar';
 titlebar.innerHTML = `
   <div class="drag-zone"><span class="title" id="title">Mado</span></div>
   <div class="titlebar-actions">
-    <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件">${GLYPH_OPEN}</button>
-    <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
     <button class="icon-btn" id="btn-new" title="新建文件 (Ctrl+N)" aria-label="新建文件">${GLYPH_NEW}</button>
+    <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件">${GLYPH_OPEN}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
+    <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
     <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
@@ -119,7 +119,7 @@ toolbar.innerHTML = `
     <button id="tab-preview" data-mode="preview" role="tab" aria-selected="false" aria-controls="preview-col">预览</button>
     <button id="tab-split" data-mode="split" role="tab" aria-selected="false" aria-controls="preview-col editor-col">分栏</button>
   </div>
-  <div class="status"><span class="dot"></span><span id="status-text">就绪</span></div>
+  <div class="status stealth"><span class="dot"></span><span id="status-text">就绪</span></div>
 `;
 
 const pane = document.createElement('main');
@@ -135,6 +135,7 @@ pane.innerHTML = `
     <nav class="toc-tree" id="toc-tree"></nav>
     <div class="toc-empty" id="toc-empty">当前文档暂无标题</div>
   </aside>
+  <div class="toc-splitter" id="toc-splitter" role="separator" aria-label="调整目录宽度" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="420" aria-valuenow="256" aria-valuetext="256 像素" tabindex="0"></div>
   <section class="editor-col" id="editor-col" role="tabpanel" aria-labelledby="tab-editor">
     <div class="editor-wrap" id="editor-host"></div>
   </section>
@@ -155,6 +156,8 @@ const tocSidebar = document.getElementById('toc-sidebar')!;
 const tocTree = document.getElementById('toc-tree')!;
 const tocEmpty = document.getElementById('toc-empty')!;
 const tocCollapse = document.getElementById('toc-collapse')!;
+const tocSplitter = document.getElementById('toc-splitter')! as HTMLElement;
+const statusContainer = statusEl.parentElement!;
 const tocToggleAll = document.getElementById('toc-toggle-all') as HTMLButtonElement;
 
 // ---------------------------------------------------------------- outline / TOC
@@ -163,6 +166,17 @@ let tocRoots: TocNode[] = [];
 let nodeById = new Map<number, TocNode>();
 let lastTocSignature = '';
 let tocDirty = false;
+
+const TOC_MIN_WIDTH = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--toc-w-min'), 10);
+const TOC_MAX_WIDTH = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--toc-w-max'), 10);
+let tocWidth = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--toc-w'), 10);
+
+function setTocWidth(width: number) {
+  tocWidth = Math.min(TOC_MAX_WIDTH, Math.max(TOC_MIN_WIDTH, width));
+  tocSidebar.style.flexBasis = `${tocWidth}px`;
+  tocSplitter.setAttribute('aria-valuenow', String(tocWidth));
+  tocSplitter.setAttribute('aria-valuetext', `${tocWidth} 像素`);
+}
 
 function getAllParentNodes(nodes: TocNode[]): TocNode[] {
   return flattenToc(nodes).filter((n) => n.children.length > 0);
@@ -233,7 +247,7 @@ function renderNode(node: TocNode, frag: DocumentFragment) {
   link.textContent = node.text;
   link.title = node.text;
 
-  row.append(badge, link);
+  row.append(link, badge);
   frag.appendChild(row);
 
   if (node.children.length > 0 && node.expanded) {
@@ -313,6 +327,30 @@ tocTree.addEventListener('click', (e) => {
   jumpToTocNode(node);
 });
 
+tocSplitter.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || tocSidebar.classList.contains('collapsed')) return;
+  event.preventDefault();
+  tocSplitter.setPointerCapture(event.pointerId);
+  const startX = event.clientX;
+  const startWidth = tocSidebar.getBoundingClientRect().width;
+  const move = (e: PointerEvent) => setTocWidth(startWidth + e.clientX - startX);
+  const end = () => {
+    tocSplitter.removeEventListener('pointermove', move);
+    tocSplitter.removeEventListener('pointerup', end);
+    tocSplitter.removeEventListener('pointercancel', end);
+  };
+  tocSplitter.addEventListener('pointermove', move);
+  tocSplitter.addEventListener('pointerup', end);
+  tocSplitter.addEventListener('pointercancel', end);
+});
+
+tocSplitter.addEventListener('keydown', (event) => {
+  const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+  if (!direction) return;
+  event.preventDefault();
+  setTocWidth(tocWidth + direction * 16);
+});
+
 tocCollapse.addEventListener('click', () => {
   tocSidebar.classList.toggle('collapsed');
   const isCollapsed = tocSidebar.classList.contains('collapsed');
@@ -368,6 +406,8 @@ const fontCommitter = createFontCommitter({
   fail: (err) => {
     console.error('SetPreviewFont failed', err);
     statusEl.textContent = '预览字体无效';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
   },
   restore: (value) => {
     if (setPreviewFontInput) setPreviewFontInput.value = value;
@@ -484,10 +524,16 @@ async function refreshPreview() {
     previewCss = css;
     writePreview(html);
     updateToc(md);
+    if (statusContainer.classList.contains('error')) return;
     statusEl.textContent = dirty ? '未保存' : '就绪';
+    statusContainer.classList.toggle('unsaved', dirty);
+    statusContainer.classList.toggle('stealth', !dirty);
+    statusContainer.classList.remove('error');
   } catch (err) {
     console.error('render failed', err);
     statusEl.textContent = '渲染失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
   }
 }
 
@@ -763,6 +809,9 @@ function setTitle(name: string) {
 }
 
 function setDirty(v: boolean) {
+  statusContainer.classList.toggle('unsaved', v);
+  statusContainer.classList.toggle('stealth', !v);
+  statusContainer.classList.remove('error');
   if (dirty === v) return; // edge-triggered: only notify Go on transitions
   dirty = v;
   void SetDirty(v);
@@ -784,6 +833,8 @@ async function loadContent(path: string, content: string) {
   setDirty(false);
   setTitle(baseName(path));
   statusEl.textContent = '就绪';
+  statusContainer.classList.add('stealth');
+  statusContainer.classList.remove('error', 'unsaved');
   await refreshPreview();
 }
 
@@ -795,6 +846,8 @@ async function openPath(path: string) {
   } catch (err) {
     console.error(err);
     statusEl.textContent = '打开失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
   }
 }
 
@@ -806,6 +859,8 @@ async function openFile() {
   } catch (err) {
     console.error(err);
     statusEl.textContent = '打开失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
   }
 }
 
@@ -823,10 +878,14 @@ async function saveCurrent(): Promise<boolean> {
     setTitle(baseName(path));
     setDirty(false);
     statusEl.textContent = '已保存';
+    statusContainer.classList.add('stealth');
+    statusContainer.classList.remove('error', 'unsaved');
     return true;
   } catch (err) {
     console.error(err);
     statusEl.textContent = '保存失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
     return false;
   }
 }
@@ -847,6 +906,8 @@ async function newFile() {
   setDirty(false);
   setTitle('未命名');
   statusEl.textContent = '就绪';
+  statusContainer.classList.add('stealth');
+  statusContainer.classList.remove('error', 'unsaved');
   await refreshPreview();
 }
 
@@ -1171,6 +1232,8 @@ async function init() {
     // Ready, so the failure notice has to be written after it.
     await newFile();
     statusEl.textContent = '打开失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
   }
   cm.focus();
 }

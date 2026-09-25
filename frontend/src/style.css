@@ -1,41 +1,53 @@
-/* ============ Mado design system ============
-   Theme via CSS custom properties on :root[data-theme].
-   App shell colors come from the Zinc scale defined here; the preview iframe
-   gets its own stylesheet from Go (theme pkg) built on the same token values.
-   Layers: L0 frame → chrome (titlebar/toolbar/sidebar) → pane (content).
-   ============================================= */
+/* ============ Mado Fluent design tokens ============
+   The preview iframe uses a separate stylesheet; uiContract.test.mjs pins
+   their shared colors. Layers: frame → chrome → document panes.
+   ================================================ */
 
 :root {
   color-scheme: dark;
 
-  /* ---- raw palette: the only place a literal color is written ---- */
+  /* ---- Fluent palette: literal colors stay centralized here ---- */
   --white: #ffffff;
-  --zinc-50: #fafafa;
-  --zinc-100: #f4f4f5;
-  --zinc-200: #e4e4e7;
-  --zinc-300: #d4d4d8;
-  --zinc-400: #a1a1aa;
-  --zinc-500: #71717a;
-  --zinc-600: #52525b;
-  --zinc-700: #3f3f46;
-  --zinc-800: #27272a;
-  --zinc-900: #18181b;
-  --zinc-950: #09090b;
-  --blue-50: #eff6ff;
-  --blue-200: #bfdbfe;
-  --blue-400: #60a5fa;
-  --blue-600: #2563eb;
-  --blue-700: #1d4ed8;
-  --red-50: #fef2f2;
-  --red-600: #dc2626;
-  --red-700: #b91c1c;
-  --success: #16a34a;
-  /* Translucent steps of the same palette: a solid swatch cannot express
-     alpha, so the composed literals live here and every semantic token
-     below stays a var() reference. */
-  --blue-600-a45: rgba(37, 99, 235, 0.45);
+  --fluent-brand: #0078d4;
+  --fluent-brand-hover: #106ebe;
+  --fluent-brand-pressed: #005a9e;
+  --dark-bg: #1f1f1f;
+  --dark-frame: #202020;
+  --dark-surface: #282828;
+  --dark-border: #383838;
+  --dark-fg: #ffffff;
+  --dark-muted: #d1d1d1;
+  --dark-accent: #479ef5;
+  --light-bg: #ffffff;
+  --light-frame: #f3f3f3;
+  --light-surface: #ffffff;
+  --light-border: #e0e0e0;
+  --light-fg: #242424;
+  --light-muted: #616161;
+  --light-accent: #0078d4;
+  --light-accent-soft: #eff6ff;
+  --light-selection: #bfdbfe;
+  --red-600: #e81123;
+  --red-700: #c50f1f;
+  --color-warning: #ffb900;
+  --color-danger: #e81123;
+  --color-warning-bg: rgba(255, 185, 0, 0.12);
+  --success: #13a10e;
+  /* Alpha variants are centralized because semantic tokens only reference vars. */
+  --dark-selection: rgba(0, 120, 212, 0.45);
   --white-a04: rgba(255, 255, 255, 0.04);
-  --zinc-900-a04: rgba(24, 24, 27, 0.04);
+  --dark-surface-a82: rgba(40, 40, 40, 0.92);
+  --light-surface-a86: rgba(255, 255, 255, 0.94);
+  --dark-backdrop-a45: rgba(0, 0, 0, 0.45);
+  --light-backdrop-a45: rgba(0, 0, 0, 0.45);
+  --dark-active-line: rgba(255, 255, 255, 0.04);
+  --light-active-line: rgba(0, 0, 0, 0.035);
+  --light-warning: #835b00;
+  --light-warning-bg: #fff4ce;
+  --dark-warning: #ffb900;
+  --dark-warning-bg: rgba(255, 185, 0, 0.12);
+  --dark-accent-soft: rgba(71, 158, 245, 0.18);
+  --dark-toc-h2: rgba(71, 158, 245, 0.1);
 
   /* ---- elevation ---- */
   --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -52,6 +64,8 @@
   --toolbar-h: 40px;
   --win-btn-w: 46px;
   --toc-w: 256px;
+  --toc-w-min: 160px;
+  --toc-w-max: 420px;
   --toc-w-collapsed: 40px;
 
   /* ---- typography ---- */
@@ -59,41 +73,43 @@
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", "Segoe UI", monospace;
 
   /* ---- semantic tokens: dark (default) ---- */
-  --frame-bg: var(--zinc-950);
-  --chrome-bg: var(--zinc-900);
-  --pane-bg: var(--zinc-950);
-  --surface: var(--zinc-900);
-  --surface-glass: rgba(24, 24, 27, 0.82);
-  --surface-hover: var(--zinc-800);
+  --frame-bg: var(--dark-frame);
+  --chrome-bg: var(--dark-frame);
+  --pane-bg: var(--dark-bg);
+  --surface: var(--dark-surface);
+  --surface-glass: var(--dark-surface-a82);
+  --surface-hover: var(--dark-border);
   /* Text selection needs mid/high contrast; the weak accent stays on badges
      and active toolbar buttons, so the two roles get separate tokens. */
-  --selection-bg: var(--blue-600-a45);
+  --selection-bg: var(--dark-selection);
   /* CodeMirror paints the selection under the line elements, so the active
      line must stay translucent or it hides the selection on that line. */
   --editor-active-line: var(--white-a04);
-  --text: var(--zinc-100);
-  --text-dim: var(--zinc-400);
-  --border: var(--zinc-800);
-  --accent: var(--blue-600);
-  --accent-soft: rgba(37, 99, 235, 0.18);
-  --accent-text: var(--blue-400);
-  --focus-ring: var(--blue-400);
+  --text: var(--dark-fg);
+  --text-dim: var(--dark-muted);
+  --border: var(--dark-border);
+  --accent: var(--dark-accent);
+  --accent-soft: var(--dark-accent-soft);
+  --accent-text: var(--dark-accent);
+  --focus-ring: var(--dark-accent);
   --danger: var(--red-600);
   --danger-strong: var(--red-700);
-  --backdrop: rgba(9, 9, 11, 0.6);
+  --backdrop: var(--dark-backdrop-a45);
+  --color-warning: var(--dark-warning);
+  --color-warning-bg: var(--dark-warning-bg);
 
-  /* Outline / TOC color depth hierarchy (dark) */
-  --toc-h1: var(--zinc-50);
-  --toc-h2: var(--zinc-200);
-  --toc-h3: var(--zinc-300);
-  --toc-h4: var(--zinc-400);
-  --toc-h5: var(--zinc-500);
-  --toc-h6: var(--zinc-600);
+  /* Outline / TOC hierarchy */
+  --toc-h1: var(--dark-fg);
+  --toc-h2: var(--dark-muted);
+  --toc-h3: var(--dark-muted);
+  --toc-h4: var(--dark-muted);
+  --toc-h5: var(--dark-muted);
+  --toc-h6: var(--dark-muted);
   --toc-badge-bg: var(--surface-hover);
   --toc-badge-color: var(--text-dim);
   --toc-badge-h1-bg: var(--accent-soft);
   --toc-badge-h1-color: var(--accent-text);
-  --toc-badge-h2-bg: rgba(37, 99, 235, 0.1);
+  --toc-badge-h2-bg: var(--dark-toc-h2);
   --toc-badge-h2-color: var(--accent-text);
 }
 
@@ -105,38 +121,40 @@
   --shadow-e3: 0 16px 48px rgba(9, 9, 11, 0.18);
   --shadow-glass: 0 24px 64px rgba(9, 9, 11, 0.22);
 
-  --frame-bg: var(--zinc-200);
-  --chrome-bg: var(--zinc-100);
-  --pane-bg: var(--white);
-  --surface: var(--white);
-  --surface-glass: rgba(255, 255, 255, 0.86);
-  --surface-hover: var(--zinc-100);
-  --selection-bg: var(--blue-200);
-  --editor-active-line: var(--zinc-900-a04);
-  --text: var(--zinc-900);
-  --text-dim: var(--zinc-500);
-  --border: var(--zinc-200);
-  --accent: var(--blue-600);
-  --accent-soft: var(--blue-50);
-  --accent-text: var(--blue-700);
-  --focus-ring: var(--blue-600);
+  --frame-bg: var(--light-frame);
+  --chrome-bg: var(--light-frame);
+  --pane-bg: var(--light-bg);
+  --surface: var(--light-surface);
+  --surface-glass: var(--light-surface-a86);
+  --surface-hover: var(--light-frame);
+  --selection-bg: var(--light-selection);
+  --editor-active-line: var(--light-active-line);
+  --text: var(--light-fg);
+  --text-dim: var(--light-muted);
+  --border: var(--light-border);
+  --accent: var(--light-accent);
+  --accent-soft: var(--light-accent-soft);
+  --accent-text: var(--light-accent);
+  --focus-ring: var(--light-accent);
   --danger: var(--red-600);
   --danger-strong: var(--red-700);
-  --backdrop: rgba(9, 9, 11, 0.32);
+  --backdrop: var(--light-backdrop-a45);
+  --color-warning: var(--light-warning);
+  --color-warning-bg: var(--light-warning-bg);
 
-  /* Outline / TOC color depth hierarchy (light) */
-  --toc-h1: var(--zinc-950);
-  --toc-h2: var(--zinc-800);
-  --toc-h3: var(--zinc-700);
-  --toc-h4: var(--zinc-600);
-  --toc-h5: var(--zinc-500);
-  --toc-h6: var(--zinc-400);
-  --toc-badge-bg: var(--zinc-100);
-  --toc-badge-color: var(--text-dim);
-  --toc-badge-h1-bg: var(--blue-50);
-  --toc-badge-h1-color: var(--blue-700);
-  --toc-badge-h2-bg: var(--white);
-  --toc-badge-h2-color: var(--blue-600);
+  /* Outline / TOC hierarchy */
+  --toc-h1: var(--light-fg);
+  --toc-h2: var(--light-muted);
+  --toc-h3: var(--light-muted);
+  --toc-h4: var(--light-muted);
+  --toc-h5: var(--light-muted);
+  --toc-h6: var(--light-muted);
+  --toc-badge-bg: var(--light-frame);
+  --toc-badge-color: var(--light-muted);
+  --toc-badge-h1-bg: var(--light-accent-soft);
+  --toc-badge-h1-color: var(--light-accent);
+  --toc-badge-h2-bg: var(--light-surface);
+  --toc-badge-h2-color: var(--light-accent);
 }
 
 * {
@@ -200,7 +218,7 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  background: var(--chrome-bg);
+  background: var(--frame-bg);
   border-bottom: 1px solid var(--border);
   --wails-draggable: drag;  /* frameless window drag (Wails custom property) */
 }
@@ -327,6 +345,7 @@ body {
 .icon-btn:active {
   background: var(--border);
   color: var(--text);
+  transform: scale(0.97);
 }
 
 .icon-btn:focus-visible {
@@ -371,8 +390,8 @@ body {
   display: flex;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 2px;
+  border-radius: 999px;
+  padding: 3px;
   gap: 2px;
 }
 
@@ -383,9 +402,9 @@ body {
   font-family: var(--font-sans);
   font-size: 12px;
   padding: 4px 14px;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .seg button:hover {
@@ -410,24 +429,43 @@ body {
 }
 
 .seg button.active {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-e1);
 }
 
 .status {
   margin-left: auto;
-  font-size: 11.5px;
-  color: var(--text-dim);
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--text-dim);
 }
 
 .status .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--success);
+  background: currentColor;
+}
+
+.status.stealth {
+  color: var(--text-dim);
+  opacity: 0.62;
+}
+
+.status.unsaved {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.status.error {
+  color: var(--color-danger);
 }
 
 /* ============ Main pane ============ */
@@ -436,7 +474,7 @@ body {
   flex: 1 1 auto;
   display: flex;
   gap: 1px;
-  background: var(--border);
+  background: var(--frame-bg);
   min-height: 0;
 }
 
@@ -445,7 +483,7 @@ body {
 .toc-sidebar {
   display: none;
   flex: 0 0 var(--toc-w);
-  min-width: 0;
+  min-width: var(--toc-w-min);
   flex-direction: column;
   background: var(--chrome-bg);
   border-right: 1px solid var(--border);
@@ -457,6 +495,44 @@ body {
 .toc-sidebar.collapsed {
   flex-basis: var(--toc-w-collapsed);
   min-width: var(--toc-w-collapsed);
+}
+
+.toc-splitter {
+  display: none;
+  flex: 0 0 6px;
+  margin-right: -3px;
+  margin-left: -3px;
+  position: relative;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane.editor-only .toc-splitter,
+.pane.preview-only .toc-splitter {
+  display: block;
+}
+
+.toc-splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.toc-splitter:hover::after,
+.toc-splitter:focus-visible::after {
+  background: var(--accent);
+}
+
+.toc-splitter:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.toc-sidebar.collapsed + .toc-splitter {
+  display: none;
 }
 
 .toc-sidebar.collapsed .toc-header > .toc-title,
@@ -572,11 +648,12 @@ body {
 }
 
 .toc-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 28px;
-  padding: 4px 6px;
+  padding: 4px 34px 4px 6px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
@@ -629,10 +706,12 @@ body {
 }
 
 .toc-badge {
-  flex: 0 0 auto;
-  font-size: 9.5px;
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 8.5px;
   font-weight: 600;
-  padding: 1px 5px;
+  padding: 0 3px;
   border-radius: var(--radius-sm);
   background: var(--toc-badge-bg);
   color: var(--toc-badge-color);
@@ -714,7 +793,7 @@ body {
 .toc-empty[hidden] { display: none; }
 
 @media (max-width: 680px) {
-  .toc-sidebar { flex-basis: 204px; }
+  .toc-sidebar:not(.collapsed) { flex-basis: min(var(--toc-w), 50vw); }
 }
 
 /* Editor-only: hide the preview column. */
@@ -857,6 +936,7 @@ body {
 #close-dialog::backdrop,
 #settings-dialog::backdrop {
   background: var(--backdrop);
+  backdrop-filter: blur(12px);
 }
 
 @supports ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
@@ -1038,13 +1118,14 @@ body {
   font-family: var(--font-sans);
   font-size: 12.5px;
   width: 100%;
-  padding: 6px 10px;
-  background: var(--pane-bg);
+  padding: 7px 10px;
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-bottom: 1px solid var(--text-dim);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, border-bottom-width 0.15s ease;
 }
 
 .settings-text-input:hover {
@@ -1052,7 +1133,8 @@ body {
 }
 
 .settings-text-input:focus {
-  border-color: var(--accent);
+  border-color: var(--border);
+  border-bottom: 2px solid var(--accent);
 }
 
 .settings-text-input:focus-visible {
@@ -1071,7 +1153,7 @@ body {
   display: flex;
   background: var(--surface-hover);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 2px;
   gap: 2px;
 }
@@ -1116,7 +1198,7 @@ body {
   position: relative;
   display: inline-block;
   width: 40px;
-  height: 22px;
+  height: 20px;
 }
 
 .switch input {
@@ -1143,8 +1225,8 @@ body {
   content: "";
   height: 14px;
   width: 14px;
-  left: 3px;
-  bottom: 3px;
+  left: 2px;
+  bottom: 2px;
   background-color: var(--text-dim);
   transition: transform 0.2s ease, background-color 0.2s ease;
   border-radius: 50%;
@@ -1160,7 +1242,7 @@ body {
 }
 
 .switch input:checked + .slider:before {
-  transform: translateX(18px);
+  transform: translateX(20px);
   background-color: var(--white);
 }
 

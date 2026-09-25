@@ -37,44 +37,41 @@ func TestLight(t *testing.T) {
 	}
 }
 
-// TestTokenValues pins every preview token to the Zinc palette the app shell
-// uses. The iframe gets its own stylesheet, so a drifting literal here would
-// silently paint the preview in a different grey than the editor around it.
+// TestTokenValues pins preview colors to the paired Fluent 2 shell palette.
+// The iframe has its own stylesheet, so these literals keep both surfaces aligned.
 func TestTokenValues(t *testing.T) {
 	want := map[string]map[string]string{
 		"dark": {
-			"--bg":           "#09090b",
-			"--fg":           "#f4f4f5",
-			"--muted":        "#a1a1aa",
-			"--border":       "#27272a",
-			"--accent":       "#2563eb",
-			"--accent-soft":  "rgba(37, 99, 235, 0.18)",
-			"--selection-bg": "rgba(37, 99, 235, 0.45)",
-			"--code-bg":      "#18181b",
-			"--quote-bg":     "#18181b",
-			"--quote-border": "#52525b",
-			"--table-head":   "#18181b",
-			"--table-stripe": "#27272a",
-			// High-contrast blue: #2563eb would fail WCAG AA on the dark
-			// canvas, so links use the brighter step of the same hue.
-			"--link":    "#60a5fa",
-			"--heading": "#fafafa",
+			"--bg":           "#1f1f1f",
+			"--fg":           "#ffffff",
+			"--muted":        "#d1d1d1",
+			"--border":       "#383838",
+			"--accent":       "#479ef5",
+			"--accent-soft":  "rgba(71, 158, 245, 0.18)",
+			"--selection-bg": "rgba(0, 120, 212, 0.45)",
+			"--code-bg":      "#282828",
+			"--quote-bg":     "#282828",
+			"--quote-border": "#4f4f4f",
+			"--table-head":   "#282828",
+			"--table-stripe": "#262626",
+			"--link":         "#479ef5",
+			"--heading":      "#ffffff",
 		},
 		"light": {
 			"--bg":           "#ffffff",
-			"--fg":           "#18181b",
-			"--muted":        "#71717a",
-			"--border":       "#e4e4e7",
-			"--accent":       "#2563eb",
+			"--fg":           "#242424",
+			"--muted":        "#616161",
+			"--border":       "#e0e0e0",
+			"--accent":       "#0078d4",
 			"--accent-soft":  "#eff6ff",
 			"--selection-bg": "#bfdbfe",
-			"--code-bg":      "#f4f4f5",
-			"--quote-bg":     "#fafafa",
-			"--quote-border": "#a1a1aa",
-			"--table-head":   "#f4f4f5",
-			"--table-stripe": "#fafafa",
-			"--link":         "#2563eb",
-			"--heading":      "#09090b",
+			"--code-bg":      "#f5f5f5",
+			"--quote-bg":     "#fbfbfb",
+			"--quote-border": "#c0c0c0",
+			"--table-head":   "#f0f0f0",
+			"--table-stripe": "#f9f9f9",
+			"--link":         "#0078d4",
+			"--heading":      "#242424",
 		},
 	}
 	for _, themeName := range []string{"dark", "light"} {

@@ -33,38 +33,48 @@ function hasRule(source, selector, declaration, what) {
 }
 
 // ---- palette: raw tokens are the only place a literal color may live ----
-const base = {
+const palette = {
   '--white': '#ffffff',
+  '--fluent-brand': '#0078d4',
+  '--fluent-brand-hover': '#106ebe',
+  '--fluent-brand-pressed': '#005a9e',
+  '--dark-bg': '#1f1f1f',
+  '--dark-frame': '#202020',
+  '--dark-surface': '#282828',
+  '--dark-border': '#383838',
+  '--dark-fg': '#ffffff',
+  '--dark-muted': '#d1d1d1',
+  '--dark-accent': '#479ef5',
+  '--light-bg': '#ffffff',
+  '--light-frame': '#f3f3f3',
+  '--light-surface': '#ffffff',
+  '--light-border': '#e0e0e0',
+  '--light-fg': '#242424',
+  '--light-muted': '#616161',
+  '--light-accent': '#0078d4',
+  '--light-accent-soft': '#eff6ff',
+  '--light-selection': '#bfdbfe',
+  '--red-600': '#e81123',
+  '--red-700': '#c50f1f',
+  '--color-warning': '#ffb900',
+  '--color-danger': '#e81123',
+  '--color-warning-bg': 'rgba(255, 185, 0, 0.12)',
+  '--success': '#13a10e',
+  '--dark-selection': 'rgba(0, 120, 212, 0.45)',
   '--white-a04': 'rgba(255, 255, 255, 0.04)',
+  '--dark-surface-a82': 'rgba(40, 40, 40, 0.92)',
+  '--light-surface-a86': 'rgba(255, 255, 255, 0.94)',
+  '--dark-backdrop-a45': 'rgba(0, 0, 0, 0.45)',
+  '--light-backdrop-a45': 'rgba(0, 0, 0, 0.45)',
+  '--dark-active-line': 'rgba(255, 255, 255, 0.04)',
+  '--light-active-line': 'rgba(0, 0, 0, 0.035)',
+  '--light-warning': '#835b00',
+  '--light-warning-bg': '#fff4ce',
+  '--dark-accent-soft': 'rgba(71, 158, 245, 0.18)',
+  '--dark-toc-h2': 'rgba(71, 158, 245, 0.1)',
 };
-const zinc = {
-  '--zinc-50': '#fafafa',
-  '--zinc-100': '#f4f4f5',
-  '--zinc-200': '#e4e4e7',
-  '--zinc-300': '#d4d4d8',
-  '--zinc-400': '#a1a1aa',
-  '--zinc-500': '#71717a',
-  '--zinc-600': '#52525b',
-  '--zinc-700': '#3f3f46',
-  '--zinc-800': '#27272a',
-  '--zinc-900': '#18181b',
-  '--zinc-950': '#09090b',
-  '--zinc-900-a04': 'rgba(24, 24, 27, 0.04)',
-};
-const state = {
-  '--blue-50': '#eff6ff',
-  '--blue-200': '#bfdbfe',
-  '--blue-400': '#60a5fa',
-  '--blue-600': '#2563eb',
-  '--blue-600-a45': 'rgba(37, 99, 235, 0.45)',
-  '--blue-700': '#1d4ed8',
-  '--red-50': '#fef2f2',
-  '--red-600': '#dc2626',
-  '--red-700': '#b91c1c',
-  '--success': '#16a34a',
-};
-for (const [token, value] of Object.entries({ ...base, ...zinc, ...state })) {
-  has(css, `${token}: ${value};`, 'raw palette');
+for (const [token, value] of Object.entries(palette)) {
+  has(css, `${token}: ${value};`, 'Fluent palette');
 }
 
 // ---- elevation & geometry: defined once, and actually referenced ----
@@ -72,6 +82,8 @@ for (const token of ['--shadow-e1', '--shadow-e2', '--shadow-e3', '--shadow-glas
   if (!new RegExp(`^\\s*${token}:`, 'm').test(css)) fail(`elevation: ${token} not defined`);
   has(css, `var(${token})`, 'elevation usage');
 }
+has(css, '--toc-w-min: 160px;', 'TOC minimum width');
+has(css, '--toc-w-max: 420px;', 'TOC maximum width');
 const radii = { '--radius-sm': '4px', '--radius-md': '6px', '--radius-lg': '8px', '--radius-xl': '12px' };
 for (const [token, value] of Object.entries(radii)) {
   has(css, `${token}: ${value};`, 'radius scale');
@@ -87,39 +99,38 @@ for (const legacy of ['--yellow', '--green', '--red:', '--radius:', '--accent-di
 has(darkTokens, '/* mado theme tokens: dark */', 'dark marker');
 has(lightTokens, '/* mado theme tokens: light */', 'light marker');
 for (const [token, value] of Object.entries({
-  '--bg': '#09090b',
-  '--fg': '#f4f4f5',
-  '--muted': '#a1a1aa',
-  '--border': '#27272a',
-  '--accent': '#2563eb',
-  '--accent-soft': 'rgba(37, 99, 235, 0.18)',
-  '--selection-bg': 'rgba(37, 99, 235, 0.45)',
-  '--code-bg': '#18181b',
-  '--quote-bg': '#18181b',
-  '--quote-border': '#52525b',
-  '--table-head': '#18181b',
-  '--table-stripe': '#27272a',
-  '--heading': '#fafafa',
+  '--bg': '#1f1f1f',
+  '--fg': '#ffffff',
+  '--muted': '#d1d1d1',
+  '--border': '#383838',
+  '--accent': '#479ef5',
+  '--accent-soft': 'rgba(71, 158, 245, 0.18)',
+  '--selection-bg': 'rgba(0, 120, 212, 0.45)',
+  '--code-bg': '#282828',
+  '--quote-bg': '#282828',
+  '--quote-border': '#4f4f4f',
+  '--table-head': '#282828',
+  '--table-stripe': '#262626',
+  '--heading': '#ffffff',
 })) {
   has(darkTokens, `${token}: ${value};`, 'dark preview token');
 }
-// Dark links use the brighter step of the same hue so they clear WCAG AA.
-has(darkTokens, '--link: #60a5fa;', 'dark link contrast');
+has(darkTokens, '--link: #479ef5;', 'dark link palette');
 for (const [token, value] of Object.entries({
   '--bg': '#ffffff',
-  '--fg': '#18181b',
-  '--muted': '#71717a',
-  '--border': '#e4e4e7',
-  '--accent': '#2563eb',
+  '--fg': '#242424',
+  '--muted': '#616161',
+  '--border': '#e0e0e0',
+  '--accent': '#0078d4',
   '--accent-soft': '#eff6ff',
   '--selection-bg': '#bfdbfe',
-  '--code-bg': '#f4f4f5',
-  '--quote-bg': '#fafafa',
-  '--quote-border': '#a1a1aa',
-  '--table-head': '#f4f4f5',
-  '--table-stripe': '#fafafa',
-  '--link': '#2563eb',
-  '--heading': '#09090b',
+  '--code-bg': '#f5f5f5',
+  '--quote-bg': '#fbfbfb',
+  '--quote-border': '#c0c0c0',
+  '--table-head': '#f0f0f0',
+  '--table-stripe': '#f9f9f9',
+  '--link': '#0078d4',
+  '--heading': '#242424',
 })) {
   has(lightTokens, `${token}: ${value};`, 'light preview token');
 }
@@ -137,9 +148,9 @@ hasRule(css, '.cm-selectionBackground', 'background: var(--selection-bg)', 'edit
 // Semantic tokens stay var() references; the composed literals live in the
 // raw palette. The focused selector carries .cm-selectionLayer to match
 // baseTheme's (0,6,0) specificity and beat oneDark's (0,5,0).
-has(css, '--selection-bg: var(--blue-600-a45);', 'dark selection palette link');
+has(css, '--selection-bg: var(--dark-selection);', 'dark selection palette link');
 has(css, '--editor-active-line: var(--white-a04);', 'dark active line token');
-has(css, '--editor-active-line: var(--zinc-900-a04);', 'light active line token');
+has(css, '--editor-active-line: var(--light-active-line);', 'light active line token');
 has(css, ':root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground',
   'selection layer specificity');
 hasRule(baseCss, '::selection', 'background: var(--selection-bg)', 'preview selection');
@@ -150,8 +161,8 @@ hasRule(css, '.preview-col', 'position: relative', 'overlay host');
 hasNot(ts, 'previewIframe.hidden', 'iframe must never be hidden');
 
 // ---- keyboard focus contract ----
-has(css, '--focus-ring: var(--blue-400);', 'dark focus ring token');
-has(css, '--focus-ring: var(--blue-600);', 'light focus ring token');
+has(css, '--focus-ring: var(--dark-accent);', 'dark focus ring token');
+has(css, '--focus-ring: var(--light-accent);', 'light focus ring token');
 hasRule(css, ':focus-visible', 'outline: 2px solid var(--focus-ring)', 'generic focus ring');
 for (const selector of [
   '.icon-btn',
@@ -160,6 +171,7 @@ for (const selector of [
   '.toc-collapse-btn',
   '.toc-toggle-all-btn',
   '.toc-toggle',
+  '.toc-splitter',
   '.dialog-actions button',
   '.settings-close-btn',
   '.settings-text-input',
@@ -223,7 +235,21 @@ has(ts, 'id="tab-split"', 'split tab id');
 has(ts, 'role="tabpanel" aria-labelledby="tab-editor"', 'editor tabpanel link');
 has(ts, 'role="tabpanel" aria-labelledby="tab-preview"', 'preview tabpanel link');
 has(ts, 'aria-label="展开侧栏"', 'toc collapse initial label');
+has(ts, 'role="separator" aria-label="调整目录宽度" aria-orientation="vertical"', 'toc splitter semantics');
+has(ts, 'aria-valuetext="256 像素"', 'toc splitter value text');
+has(ts, '</aside>\n  <div class="toc-splitter"', 'toc splitter is a sidebar sibling');
+has(ts, 'setPointerCapture(event.pointerId)', 'toc pointer capture');
+has(ts, "if (dirty === v) return; // edge-triggered: only notify Go on transitions", 'dirty IPC remains edge-triggered');
+has(ts, 'direction * 16', 'toc keyboard step');
 if (!/setAttribute\('aria-label'/.test(ts)) fail('toc aria-label is never updated');
 
+const actionOrder = ['btn-new', 'btn-open', 'btn-theme', 'btn-save', 'btn-settings'];
+const actionPositions = actionOrder.map((id) => ts.indexOf(`id="${id}"`));
+if (actionPositions.some((position, index) => position < 0 || (index > 0 && position <= actionPositions[index - 1]))) {
+  fail('titlebar actions: expected new, open, theme, save, settings order');
+}
+for (const state of ['stealth', 'unsaved', 'error']) {
+  has(ts, `classList.${state === 'stealth' ? 'add' : 'toggle'}`, `status state ${state}`);
+}
 if (failures > 0) process.exit(1);
 console.log('ui contract self-check: OK');

@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.10：默认起始页面改为编辑态、工具栏顺序调整为 编辑 / 预览 / 分栏，待 Windows 交互验收）
+- **当前阶段**：开发中（v1.11：完成 Fluent 2 双主题界面重构、预览令牌对齐、状态反馈与目录宽度控制；Windows 原生交互待手动验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -57,7 +57,7 @@ wails.json               # Wails 项目配置（frontend:dir、install/build 命
 internal/filesys/        # 文件读写 + lastfile 只写记录（与 settings 共享 exe 目录下 settings.json；文档保存解析符号链接后在真实目标目录原子替换；无读取方，见 §9）
 internal/mdrender/       # goldmark 渲染：GFM + typographer + HTML(Unsafe) + Chroma 高亮 + LaTeX 数学扩展（math.go，渲染器按引擎实例化）+ 源行号锚点（srcline.go）+ script/meta refresh 净化
 internal/settings/       # 主题/自动换行/公式渲染偏好持久化（共享同一 JSON 文件，顶层字段互不干扰）
-internal/theme/          # 亮/暗设计令牌 CSS（Zinc 色阶，与前端外壳令牌成对维护），go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
+internal/theme/          # Fluent 2 亮/暗预览设计令牌与排版 CSS（与前端外壳配色成对维护），go:embed 内嵌（assets/theme/{tokens-dark,tokens-light,base}.css）
 frontend/                # 前端：src/main.ts + src/toc.ts（ATX 目录解析与标题折叠状态映射）+ src/renderScheduler.ts + src/fontCommit.ts + src/gutter.ts + src/style.css（外壳设计令牌与组件样式）+ scripts/copy-assets.mjs + index.html；tests/ 为 Node 原生自检（fontCommit/gutter/tocGutter/renderScheduler/uiContract；tocGutter 直接导入生产 toc.ts）与 dev-only 无头检查；构建产物 dist/（app.js/app.css/index.html/katex/，字体仅 woff2）
 frontend/wailsjs/        # Wails 自动生成的前端绑定（go/main/App.js 等，构建时生成，勿手改）
 frontend/dist/           # 构建产物，go:embed 嵌入 exe（FS 根即 dist 内容；gitignored）
@@ -71,7 +71,7 @@ docs/                    # 用户文档
   - `app.go`（App 绑定）→ 前端唯一入口，聚合 filesys/mdrender/settings/theme
   - `mdrender.Render(md, math) → safe HTML`（script 已剥离，公式按开关渲染为占位元素或原样文本）
   - `theme.ThemeCSS(theme, font) → 组合预览 CSS`（tokens + `--preview-font` 字体变量声明 + base；字体名经 settings 校验并由 theme 层转义后注入，固定回退栈追加在后、以 `monospace` 收尾保证 code/kbd 首选字体缺失时不退到比例字体）
-  - 文本选区通道：外壳 `frontend/src/style.css` 与预览 `tokens-*.css` 成对维护 `--selection-bg`（暗 `rgba(37, 99, 235, 0.45)` / 亮 `#bfdbfe`），统一 CodeMirror 选区层、外壳原生选区与预览 `::selection`；半透明字面量只登记在外壳 raw palette（`--blue-600-a45` / `--white-a04` / `--zinc-900-a04`），语义令牌层只做 `var()` 引用；编辑器活动行固定为约 4% 半透明的 `--editor-active-line`，不得回退为不透明表面色（CM6 选区层绘制在行元素背景之下，不透明活动行会遮住当前行选区）；聚焦选区规则带 `.cm-selectionLayer` 层级类以匹配 baseTheme 的 (0,6,0) 特异性并高于 oneDark (0,5,0)，结合下游 `<link>` 层叠顺序确定性覆盖编辑器选区背景；模式切回 Editor/Split 在生产端同步执行 `cm.measure()`（带降级 `requestMeasure`），彻底消除 0x0 几何真空期；预览 `::selection` 仅定义背景色，保留代码语法高亮与正文色彩正交性，与 CodeMirror 独立图层选区体验严格对称
+  - Fluent 2 令牌：外壳 `frontend/src/style.css` 与预览 `tokens-*.css` 成对维护深色 `#1f1f1f` 画布 / `#383838` 边框 / `#479ef5` 强调色，以及浅色 `#ffffff` 画布 / `#e0e0e0` 边框 / `#0078d4` 强调色；Segoe UI 界面字体、4/6/8/12px 圆角和 Fluent 警示/危险状态令牌统一在外壳声明，Go `TestTokenValues` 与 Node UI 契约测试锁定两端预览值；编辑器活动行保持半透明，避免覆盖选区层（CM6 选区层绘制在行元素背景之下，不透明活动行会遮住当前行选区）；聚焦选区规则带 `.cm-selectionLayer` 层级类以匹配 baseTheme 的 (0,6,0) 特异性并高于 oneDark (0,5,0)，结合下游 `<link>` 层叠顺序确定性覆盖编辑器选区背景；模式切回 Editor/Split 在生产端同步执行 `cm.measure()`（带降级 `requestMeasure`），彻底消除 0x0 几何真空期；预览 `::selection` 仅定义背景色，保留代码语法高亮与正文色彩正交性，与 CodeMirror 独立图层选区体验严格对称
   - `app.persist(mutate)` → 偏好写入唯一通道：复制 settings → 副本上 mutate → 保存成功才赋回 `a.settings`；`SetTheme/SetWrap/SetMath/SetPreviewFont` 全部经此，窗口主题 chrome 也在保存成功并解锁后才切换；App 的 `sync.RWMutex` 守护设置、dirty 与 quitting，`Render/GetCSS/GetSettings` 在锁内取快照，`main.go` 通过 `shouldPreventClose()` 读取关闭快照，偏好与 lastfile 的共享 JSON 写入在同一进程内串行化；渲染调度器在 refresh Promise 完成前合并最新请求
 - **数据流**：
   - 启动：main.go 解析 os.Args（Windows「打开方式」以 `mado.exe "%1"` 启动）→ `startupFile` 字段 → 前端 `GetStartupFile()` 有路径则 `LoadFile` 加载（读取失败回退空白态并提示 `Open failed`），无路径则直接走 `newFile()` 空白未命名态（与 Ctrl+N 同源）；初始化主题仅应用界面状态、不触发预览，加载/新建在清空旧 timer 并抑制文档监听副作用后显式渲染一次；`startup` 自动检查旧配置目录执行一次性迁移，除此之外启动全程只读，不创建用户配置目录（回归用例 `TestStartupCreatesNoWelcomeDoc`）
@@ -79,7 +79,7 @@ docs/                    # 用户文档
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `预览字体无效`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
   - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
-  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级与原文行号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；默认节点全部展开，顶部提供「全部展开/全部收起」动态切换按钮；侧栏默认收起（40px 紧凑导轨），点击展开至 256px；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名实现增量过滤（无标题结构变化时零 DOM 重排）；`toc.ts` 先统一 CRLF 为 LF，再按围栏字符和长度识别闭合，按 ATX 语法保留 C#、F#、Part # 的结尾井号，并按层级、文本及同键标题出现序号恢复折叠状态（结构变化后按当前顺序关联），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按渲染块 `data-line` 定位并 `scrollIntoView`
+  - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级与原文行号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；标题层级微标定位在行项右上角；侧栏默认收起（40px 紧凑导轨），点击展开至 256px，支持 160px~420px 鼠标拖宽与方向键 16px 微调；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名实现增量过滤（无标题结构变化时零 DOM 重排）；`toc.ts` 先统一 CRLF 为 LF，再按围栏字符和长度识别闭合，按 ATX 语法保留 C#、F#、Part # 的结尾井号，并按层级、文本及同键标题出现序号恢复折叠状态（结构变化后按当前顺序关联），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按渲染块 `data-line` 定位并 `scrollIntoView`
   - 编辑器与模式：CodeMirror 扩展含 `lineNumbers()` + `codeFolding()`（无折叠箭头，折叠仅键盘 `foldKeymap`）——行号栏专用于跳转，不与折叠手势冲突；工具栏模式按钮顺序 Editor / Preview / Split，启动默认 Editor（`pane` 初始类 `pane editor-only`，与默认选中项一致）
   - 窗口全向缩放：前端构建 8 方向顶层透明把手（Fixed Overlay，z-index: 100000），通过 `Object.defineProperty` 冻结 Wails 内部 `enableResize` 冲突逻辑，直接响应 `mousedown` 并发送 `WailsInvoke("resize:" + edge)` 触发 Win32 原生边缘拖拽缩放；彻底杜绝 iframe 与编辑器原生滚动条对右侧及右下角事件的吞没；窗口最大化时把手自动隐藏
   - 脏标记：`dirty` 状态变化（编辑/保存/加载/新建）时前端通过 `SetDirty(bool)` 同步到 Go 侧 App 实例，仅状态翻转时发送（edge-triggered，避免每击键 IPC）
@@ -189,6 +189,8 @@ docs/                    # 用户文档
 - 2026-08-29 预览行号栏用 CSS `content: attr(data-line)` + 绝对定位，而非父窗口行号列 + JS 测高 + scroll 同步——理由：零 JS 定位，行号随重排/换行/缩放自动跟随，天然随文档滚动；后者需逐块 `getComputedStyle`、每次渲染重建 DOM，且滚动同步易抖动
 - 2026-08-29 围栏代码块用包装层 div 承载行号，而非 `PreventSurroundingPre(true)` 自写 `<pre>`——理由：包装层下 Chroma 输出保持零变化（行包装 span 与 `<pre>` 开标签逐字保留），后者会连带删除行包装 span 并让 `hl_lines`/`linenos` 渲染路径失效
 - 2026-09-25 启动默认模式与工具栏顺序改为 Editor / Preview / Split（`pane` 初始类 `pane editor-only`）——理由：默认起始页面改为编辑态，顺序首位即默认的既有约定不变，编辑列自启动可见
+- 2026-09-25 前端外壳与 Go embed 预览令牌统一切换为 Fluent 2 双主题调色板，并以契约测试约束暗浅色一致性——理由：预览运行在隔离 iframe，颜色需由两份样式表显式同步
+- 2026-09-25 目录侧栏调整为受边界限制的鼠标/键盘调宽，标题层级徽标移至每行右上角——理由：释放标题文本宽度，并保留 160px~420px 控制及 40px 折叠导轨
 - 2026-08-29 行号跳转只滚动，不改光标/选区/焦点——理由：避免在编辑中途丢失光标位置；CodeMirror 的 mousedown 处理器只挂在 contentDOM，行号槽点击本就不会触发选区
 - 2026-08-29 启动默认模式改为 Preview，工具栏顺序 Preview / Editor / Split——理由：顺序首位即默认，启动先落阅读态
 - 2026-08-29 偏好写入统一收敛到 `App.persist`（副本 mutate → 保存成功才赋回，窗口主题 chrome 亦在保存成功后切换），失败注入改用 `App.saveSettings` 函数字段而非目录占位——理由：四个 setter 此前语义不一致（SetPreviewFont 保存成功才改内存，其余先改内存再保存），保存失败会内存/磁盘分流；函数字段注入无需为测试扩大 settings 包公开 API，也避免删除 exe 目录下真实 settings.json 的破坏性用例
