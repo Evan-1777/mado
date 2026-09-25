@@ -1,37 +1,58 @@
-// Zero-dependency self-check for TOC source lines mapped to preview blocks.
-// The preview block list contains data-line values from top-level rendered
-// blocks; raw HTML headings do not contribute a block with a data-line.
+// Zero-dependency self-checks for TOC parsing, source mapping and state restoration.
 // Run: node frontend/tests/tocGutter.test.ts
 import { pickBlockIndex } from '../src/gutter.ts';
+import { flattenToc, parseToc, restoreTocExpansion } from '../src/toc.ts';
 
+const fence = String.fromCharCode(96).repeat(3);
+const longerFence = String.fromCharCode(96).repeat(4);
 const markdown = [
   'Setext heading',
   '===============',
   '',
   '<h2>Raw HTML heading</h2>',
   '',
+  fence,
+  '~~~',
+  '## not a heading',
+  longerFence,
+  longerFence,
+  '## still in fence',
+  longerFence,
   '## ATX heading',
+  '## Back after fence',
+  '## C#',
+  '## F#',
+  '## Part #',
+  '## Legal close ###',
+  '## Single close #',
 ].join('\n');
-
-function parseToc(text: string): { text: string; line: number }[] {
-  return text.split('\n').flatMap((line, index) => {
-    const match = /^(\s{0,3})#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
-    return match ? [{ text: match[2].trim(), line: index }] : [];
-  });
+const toc = flattenToc(parseToc(markdown));
+const expected = [
+  { text: 'ATX heading', line: 12 },
+  { text: 'Back after fence', line: 13 },
+  { text: 'C#', line: 14 },
+  { text: 'F#', line: 15 },
+  { text: 'Part #', line: 16 },
+  { text: 'Legal close', line: 17 },
+  { text: 'Single close #', line: 18 },
+];
+if (JSON.stringify(toc.map(({ text, line }) => ({ text, line }))) !== JSON.stringify(expected)) {
+  throw new Error('TOC parsing mismatch: ' + JSON.stringify(toc));
 }
 
-const toc = parseToc(markdown);
-if (JSON.stringify(toc) !== JSON.stringify([{ text: 'ATX heading', line: 5 }])) {
-  throw new Error(`TOC = ${JSON.stringify(toc)}, want ATX heading at line 5`);
-}
-
-// Rendered top-level blocks carry 1-based data-line values. The setext
-// heading starts at line 1, the raw HTML heading has no data-line, and the
-// ATX heading starts at line 6.
-const previewBlockLines = [1, 6];
+const previewBlockLines = [1, 13, 15];
 const blockIndex = pickBlockIndex(previewBlockLines, toc[0].line + 1);
-if (blockIndex !== 1 || previewBlockLines[blockIndex] !== 6) {
-  throw new Error(`ATX heading mapped to block ${blockIndex}, want block 1 at line 6`);
+if (blockIndex !== 1 || previewBlockLines[blockIndex] !== 13) {
+  throw new Error('ATX heading source line mapped to the wrong preview block');
 }
 
-console.log('TOC source-line mapping self-check: OK');
+const previous = parseToc('# Same\n## Child\n# Same\n## Child');
+previous[0].expanded = false;
+previous[1].expanded = true;
+const rebuilt = parseToc('# Same\n## Child\n# Same\n## Child');
+restoreTocExpansion(previous, rebuilt);
+if (rebuilt[0].expanded !== false || rebuilt[1].expanded !== true) {
+  throw new Error('duplicate heading expansion states were not restored independently');
+}
+
+console.log('TOC parsing, mapping, and repeated-heading state self-check: OK');

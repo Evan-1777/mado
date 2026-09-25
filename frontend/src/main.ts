@@ -14,6 +14,7 @@ import {
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
+import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
 import { createRenderScheduler } from './renderScheduler';
 
 // ---------------------------------------------------------------- helpers
@@ -158,72 +159,10 @@ const tocToggleAll = document.getElementById('toc-toggle-all') as HTMLButtonElem
 
 // ---------------------------------------------------------------- outline / TOC
 
-type TocNode = {
-  id: number;
-  level: number;
-  text: string;
-  line: number;
-  children: TocNode[];
-  expanded: boolean;
-};
-
 let tocRoots: TocNode[] = [];
 let nodeById = new Map<number, TocNode>();
 let lastTocSignature = '';
 let tocDirty = false;
-
-function parseToc(markdownText: string): TocNode[] {
-  const roots: TocNode[] = [];
-  const stack: TocNode[] = [];
-  const lines = markdownText.split('\n');
-  let fenced = false;
-  let nextId = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
-      continue;
-    }
-    if (fenced) continue;
-    const match = /^(\s{0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (!match) continue;
-
-    const node: TocNode = {
-      id: nextId++,
-      level: match[2].length,
-      text: match[3].trim(),
-      line: i,
-      children: [],
-      expanded: true, // Default all outline nodes expanded
-    };
-
-    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
-      stack.pop();
-    }
-    if (stack.length > 0) {
-      stack[stack.length - 1].children.push(node);
-    } else {
-      roots.push(node);
-    }
-    stack.push(node);
-  }
-  return roots;
-}
-
-function flattenToc(nodes: TocNode[]): TocNode[] {
-  const result: TocNode[] = [];
-  function traverse(list: TocNode[]) {
-    for (const n of list) {
-      result.push(n);
-      if (n.children.length > 0) {
-        traverse(n.children);
-      }
-    }
-  }
-  traverse(nodes);
-  return result;
-}
 
 function getAllParentNodes(nodes: TocNode[]): TocNode[] {
   return flattenToc(nodes).filter((n) => n.children.length > 0);
@@ -340,22 +279,7 @@ function updateToc(markdownText: string) {
   }
   lastTocSignature = signature;
 
-  if (tocRoots.length > 0) {
-    const prevMap = new Map<string, boolean>();
-    for (const oldNode of flattenToc(tocRoots)) {
-      if (oldNode.children.length > 0) {
-        prevMap.set(`${oldNode.level}:${oldNode.text}`, oldNode.expanded);
-      }
-    }
-    for (const newNode of allNew) {
-      if (newNode.children.length > 0) {
-        const prevExpanded = prevMap.get(`${newNode.level}:${newNode.text}`);
-        if (prevExpanded !== undefined) {
-          newNode.expanded = prevExpanded;
-        }
-      }
-    }
-  }
+  restoreTocExpansion(tocRoots, newRoots);
 
   tocRoots = newRoots;
   nodeById.clear();
