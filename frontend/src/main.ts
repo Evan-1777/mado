@@ -11,7 +11,7 @@ import {
   LoadFile, SaveFile, Render, GetCSS, GetSettings, SetTheme, SetDirty,
   ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
 } from '../wailsjs/go/main/App';
-import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
+import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
 import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
@@ -718,16 +718,36 @@ function scrollPreviewToLine(line: number): void {
   blocks[i].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Anchor links inside the preview (e.g. a TOC entry pointing to "#section")
-// must not use the default navigation: Chromium treats about:srcdoc#section
-// as a new iframe navigation and replaces the in-place document with an empty
-// one, so the preview goes black (and stays black until the next edit). The
-// sandbox has no allow-scripts, so we intercept clicks from the parent
-// (allow-same-origin grants DOM access) and scroll to the target manually.
+const copyResetTimers = new WeakMap<HTMLButtonElement, number>();
+
+// Preview actions are delegated from the parent because the sandboxed frame
+// has no script execution. Anchor navigation is intercepted to keep srcdoc
+// from replacing the in-place preview document.
 function hookPreviewLinks() {
   const doc = previewIframe.contentDocument;
   if (!doc) return;
-  doc.addEventListener('click', (e) => {
+  doc.addEventListener('click', async (e) => {
+    const copyButton = (e.target as Element | null)?.closest?.('.copy-code-btn') as HTMLButtonElement | null;
+    if (copyButton) {
+      e.preventDefault();
+      const code = copyButton.closest('.md-line')?.querySelector('pre')?.textContent;
+      if (code === undefined) return;
+      try {
+        if (!await ClipboardSetText(code.replace(/\n$/, ''))) return;
+      } catch {
+        return;
+      }
+      copyButton.textContent = '已复制';
+      copyButton.classList.add('copied');
+      const previous = copyResetTimers.get(copyButton);
+      if (previous !== undefined) window.clearTimeout(previous);
+      copyResetTimers.set(copyButton, window.setTimeout(() => {
+        copyButton.textContent = '复制代码';
+        copyButton.classList.remove('copied');
+        copyResetTimers.delete(copyButton);
+      }, 1200));
+      return;
+    }
     // The gutter numbers are painted on top of the body's left padding, so
     // the content column's left edge is where the clickable strip ends.
     const article = doc.getElementById('md-content') ?? doc.body;

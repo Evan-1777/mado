@@ -878,6 +878,11 @@ body {
   border-right: 1px solid var(--border);
 }
 
+:root[data-theme] .cm-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 4px;
+  text-align: center;
+}
+
 :root[data-theme] .cm-editor .cm-activeLine {
   background: var(--editor-active-line);
 }
@@ -925,6 +930,7 @@ body {
    the glass layer below is a progressive enhancement only. */
 #close-dialog,
 #settings-dialog {
+  margin: auto;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);

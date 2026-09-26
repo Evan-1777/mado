@@ -1,6 +1,6 @@
-// Dev-only headless-Chrome self-check for startup rendering, load ordering,
-// preview write caching, and editor selection visibility. NOT part of
-// `npm test` or CI: Chrome is not a guaranteed CI dependency.
+// Dev-only headless-Chrome self-check for startup rendering, preview caching,
+// editor selection visibility, and fenced-code copy. NOT part of `npm test` or CI:
+// Chrome is not a guaranteed CI dependency.
 //
 // Prerequisite: `npm run build` must have produced dist/. Run with:
 //   node tests/startup.check.mjs
@@ -29,6 +29,7 @@ window.__startup = {
   renderInputs: [],
   cssCalls: 0,
   dirtyCalls: [],
+  clip: '',
   loadCalls: 0,
   loadPaths: [],
   openPath: 'cancel.md',
@@ -52,7 +53,7 @@ window.go = { main: { App: {
   OpenFileDialog: () => Promise.resolve(state.openPath),
   Render: (md) => {
     state.renderInputs.push(md);
-    return Promise.resolve('<h1 data-line="1">word</h1>');
+    return Promise.resolve('<div class="md-line" data-line="1"><pre class="chroma"><code>copy me\\n</code></pre><button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button></div>');
   },
   SetDirty: (value) => { state.dirtyCalls.push(value); return Promise.resolve(); },
   SetTheme: () => Promise.resolve(),
@@ -65,6 +66,7 @@ window.runtime = {
   WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
   WindowIsMaximised: () => Promise.resolve(false), WindowSetTitle(){},
   EventsOn(){}, OnFileDrop(callback){ state.onDrop = callback; },
+  ClipboardSetText(text){ state.clip = text; return Promise.resolve(true); },
   WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
   WindowOnThemeChanged(){}, EventsOff(){}, EventsOffAll(){}, EventsOnce(){},
   EventsEmit(){}, WindowReload(){}, WindowReloadApp(){},
@@ -106,6 +108,15 @@ const scenario = `<script>
     const frameDoc = frame.contentDocument;
     const style = frameDoc.head.querySelector('style');
     const article = frameDoc.getElementById('md-content');
+    await wait(100); // Let the frame load handler attach its delegated click listener.
+    stage = 'copy-code-block';
+    const copyButton = frameDoc.querySelector('.copy-code-btn');
+    copyButton.click();
+    await waitFor(() => copyButton.textContent === '已复制');
+    results.push({
+      name: 'copy-code-block',
+      ok: state.clip === 'copy me' && copyButton.textContent === '已复制' && copyButton.classList.contains('copied'),
+    });
     let styleMutations = 0;
     let articleMutations = 0;
     new MutationObserver(() => { styleMutations++; }).observe(style, {
@@ -145,6 +156,14 @@ const scenario = `<script>
       name: 'unchanged-preview-write',
       ok: state.dirtyCalls.includes(true) &&
         state.renderInputs.length === 2 && styleMutations === 0 && articleMutations === 0,
+    });
+    state.clip = '';
+    const updatedCopyButton = frameDoc.querySelector('.copy-code-btn');
+    updatedCopyButton.click();
+    await waitFor(() => updatedCopyButton.textContent === '已复制');
+    results.push({
+      name: 'copy-after-in-place-update',
+      ok: state.clip === 'copy me' && updatedCopyButton.textContent === '已复制' && updatedCopyButton.classList.contains('copied'),
     });
 
     // Mode tabs carry ARIA state, and the confirm dialog keeps the three
@@ -229,7 +248,7 @@ const scenario = `<script>
       selectionRect.width > 0 && selectionRect.height > 0 &&
       activeRect.top < selectionRect.bottom && selectionRect.top < activeRect.bottom &&
       alphaOf(getComputedStyle(activeLine).backgroundColor) < 1 &&
-      selectionColor() === 'rgba(37, 99, 235, 0.45)';
+      selectionColor() === 'rgba(0, 120, 212, 0.45)';
     document.getElementById('btn-settings').click();
     document.getElementById('set-theme-light').click();
     await waitFor(() => document.documentElement.dataset.theme === 'light');
@@ -248,6 +267,8 @@ const scenario = `<script>
       ' onDrop=' + Boolean(state.onDrop) +
       ' dialog=' + Boolean(document.getElementById('close-dialog')?.open) +
       ' status=' + JSON.stringify(document.getElementById('status-text')?.textContent) +
+      ' clip=' + JSON.stringify(state.clip) +
+      ' copy=' + JSON.stringify(document.getElementById('preview')?.contentDocument?.querySelector('.copy-code-btn')?.textContent) +
       ' editor=' + JSON.stringify(document.querySelector('.cm-content')?.textContent));
   }
 })();

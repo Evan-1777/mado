@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.11：完成 Fluent 2 双主题界面重构、预览令牌对齐、状态反馈与目录宽度控制；Windows 原生交互待手动验收）
+- **当前阶段**：开发中（v1.12：恢复设置/未保存模态居中、编辑器行号数字居中，并为围栏代码块增加剪贴板复制；Windows 原生交互待手动验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -78,6 +78,8 @@ docs/                    # 用户文档
   - 编辑：CodeMirror updateListener（尾随 80ms 节流；pending timer 合并，程序性替换先 `cancel()`；refresh Promise 在途时只保留一个最新请求）→ `Render(md)` + `GetCSS()`（Promise.all）→ 预览更新：首帧用 srcdoc 写骨架（`<link katex>` + `<style>` + `<article id="md-content">`），后续仅在 iframe 内原地更新发生变化的 style 文本或 article innerHTML，并仅在 HTML 变化时调用 `renderMathInFrame` 进行父上下文 KaTeX 公式绘制（★ 禁止重设 srcdoc：会整页重载，预览闪烁且滚动回到顶部）；帧内链接（目录锚点等）由父侧 click 拦截——fragment 链接 preventDefault 后先 `decodeURIComponent`（失败则保留原值），再 getElementById → scrollIntoView，其余链接仅阻断，帧内永不发生导航；监听器挂于帧 document，帧 load 时重挂并重绘公式（srcdoc 重建后自动恢复）
   - 公式通道：Go 侧 `MathExtension` 识别 `$...$` 与 `$$...$$` 输出 `<span class="math-inline" data-tex="...">` 与 `<div class="math-block" data-tex="...">` 占位元素 → 前端父上下文 `renderMathInFrame` 遍历帧 DOM 元素并调用 `katex.renderToString` 原地回填公式 HTML，带 `Map` 渲染缓存
   - 设置与偏好：标题栏齿轮按钮唤出 `<dialog id="settings-dialog">` 设置模态；主题（深/浅双选）、自动换行（switch 开关）、公式渲染（switch 开关）、预览字体（text 输入，blur/Enter 提交）受控绑定，变更即时通过 `SetTheme`/`SetWrap`/`SetMath`/`SetPreviewFont` 落盘至 exe 目录 `settings.json` 并实时更新编辑器（CodeMirror Compartment 重配置）与预览区——字体提交经 `fontCommit.ts` 串行化（仅一个在途请求，序号守卫丢弃过期响应，Enter 后失焦同值去重）：四个 setter 在 Go 侧统一走 `persist`（先写副本、保存成功后才赋回 `a.settings`，保存失败不改内存，窗口主题 chrome 亦不切换），前端仅在成功时更新 `currentPreviewFont`、失效 `previewCss` 缓存并触发刷新；失败回填最近一次仍然有效的字体并在状态栏提示 `预览字体无效`；重开设置模态由 `syncSettingsModalUI` 回填当前生效字体
+  - **围栏代码块复制**：渲染期在 `md-line` 包装层的 `<pre>` 后输出复制按钮（只覆盖围栏，不覆盖四空格缩进块）；预览 `base.css` 以 `:hover` / `:focus-within` 显示悬浮按钮并使用主题令牌着色；父侧 `hookPreviewLinks()` 在 iframe 文档的委托 click 中读取同包装层 `<pre>.textContent`、去掉一个尾随换行后调用 Wails `ClipboardSetText`，成功时暂显「已复制」、添加成功状态类，并在 1.2 秒后还原。iframe 无脚本权限，因此交互由父侧委托，正文原地更新后监听继续生效；无头测试覆盖写入、回显和原地更新后复用。
+  - **编辑器行号居中与模态居中**：外壳 `:root[data-theme]` 规则覆盖 CodeMirror gutter 默认右对齐并使用对称 4px 内边距；对话框共享规则恢复 `margin: auto`，抵消全局 `* { margin: 0 }` 重置，恢复浏览器原生 `<dialog>` 模态居中。
   - **源行号栏与双向跳转**：`mdrender` 在渲染期用一个 goldmark ASTTransformer（`srcline.go`，优先级 1000，晚于 GFM 表格变换）给 Document 的每个直接子块写入 `data-line="N"`（该块在源码中的起始行号）——仅顶层块，避免列表项与父块数字堆叠；`data-` 前缀属性被 goldmark 的 `RenderAttributes` 无条件放行，无需动任何 AttributeFilter。围栏代码块的 `data-line` 落在 `highlighting.WithWrapperRenderer` 输出的包装层 `<div class="md-line">` 上（Chroma 的 `<pre>` 开标签不受控）；公式块由 `MathBlock.start`（解析期记录的 `$$` 行偏移）换算，在 `renderMathBlock` 手写输出。预览行号栏本身零 JS：帧内 `base.css` 用 `body.md-gutter #md-content > [data-line]::before { content: attr(data-line) }` 把数字画进 body 左内边距，随重排/换行/窗口缩放自动跟随，无需测高或 scroll 同步（规则必须在 theme 的 base.css，父窗口 CSS 管不到 iframe）；可见性由父侧 `syncGutterVisibility()` 切帧 body 的 `md-gutter` 类（预览列可见即显示：Split 与 Preview 单栏），三个调用点为 `writePreview` 末尾、帧 `load` 监听、模式按钮回调。点击互跳：Editor 侧监听 `cm.scrollDOM` 的 mousedown（★ 不能用 `EditorView.domEventHandlers`，它只挂 contentDOM），先按 x 判定落在 `.cm-gutters` 矩形内，再 `cm.posAtCoords` 取行号 → `scrollPreviewToLine` 用 `gutter.ts` 的 `pickBlockIndex`（二分）选中最后一个起始行 ≤ 目标行的块 → `scrollIntoView({block:'start'})`；Preview 侧在帧内 click 入口按 `e.clientX < 内容左边界` 判定命中行号栏，选第一个底边在指针下方的块 → `scrollEditorToLine` 用 `EditorView.scrollIntoView` effect 置顶。跳转只滚动，不改光标/选区/焦点
   - 聚焦模式目录：前端在每次成功渲染后从 Markdown ATX 标题构建多层大纲树（跳过 fenced code），记录标题层级与原文行号；采用无缩进 Flat 结构与六级颜色令牌（`--toc-h1`~`--toc-h6`），支持父节点独立折叠/展开；标题层级微标定位在行项右上角；侧栏默认收起（40px 紧凑导轨），点击展开至 256px，支持 160px~420px 鼠标拖宽与方向键 16px 微调；共享侧栏仅在 `editor-only` / `preview-only` 模式显示，通过标题签名实现增量过滤（无标题结构变化时零 DOM 重排）；`toc.ts` 先统一 CRLF 为 LF，再按围栏字符和长度识别闭合，按 ATX 语法保留 C#、F#、Part # 的结尾井号，并按层级、文本及同键标题出现序号恢复折叠状态（结构变化后按当前顺序关联），Split 模式下惰性跳过 DOM 生成，基于单一事件委托分别响应折叠切换与跳转；Editor 点击项通过 CodeMirror 行定位并聚焦，Preview 点击项按渲染块 `data-line` 定位并 `scrollIntoView`
   - 编辑器与模式：CodeMirror 扩展含 `lineNumbers()` + `codeFolding()`（无折叠箭头，折叠仅键盘 `foldKeymap`）——行号栏专用于跳转，不与折叠手势冲突；工具栏模式按钮顺序 Editor / Preview / Split，启动默认 Editor（`pane` 初始类 `pane editor-only`，与默认选中项一致）
@@ -110,6 +112,8 @@ docs/                    # 用户文档
 - 「goldmark 引擎在 Render 中每次新建，数学扩展的 parser/renderer 也按引擎实例化——原因：goldmark 与 renderer 的初始化状态不可跨并发调用共享；创建成本低于引入全局锁，保证 Wails 并发 Render 不产生数据竞争」
 - 「mdrender 剥离 `<script>` 标签但保留内联 on* 事件——原因：典型 Markdown 文档不含内联事件，过度过滤会破坏合法 HTML（如 `<div onclick>` 场景罕见）；已知限制，暂不处理」
 - 「srcdoc 重建会重置滚动并闪烁——原因：重设 iframe.srcdoc = 整页重新导航，加载完成后滚动位置归零且重建期间白闪；编辑渲染必须走 iframe 内原地更新（换 style 文本 + article innerHTML），srcdoc 仅用于首帧骨架与异常回退（Edge 151 无头实测：原地更新 scrollTop 保留，srcdoc 重载归零）」
+- 「围栏代码复制按钮只能覆盖由 `highlighting.WithWrapperRenderer` 包裹的 fenced code；四空格缩进代码块由 goldmark 独立 `renderCodeBlock` 路径输出，无共享包装层，因此本功能不覆盖——原因：为缩进块新增包装层会改变既有锚点/行号覆盖边界，超出本阶段范围（2026-09-26）。」
+- 「设置与未保存原生模态的居中依赖 `<dialog>` 默认 `margin: auto`；外壳通配重置 `* { margin: 0 }` 会覆盖该默认值，两个对话框共享规则需恢复自动外边距（2026-09-26）。」
 - 「模式切换隐藏预览列（`display: none`）会重置 iframe 文档滚动——原因：display:none 销毁 iframe 视口，`scrollingElement.scrollTop` 立即归零且隐藏状态下写回被钳制为 0 无效；而普通 overflow 容器（编辑器 `.cm-scroller`）在同样的显隐往返中原样保留偏移，造成"editor 不丢、preview 丢"。修复：模式切换 handler 在改类前捕获 `scrollTop`，类切换完成、预览列重新显示后再写回并清空（2026-08-31 修复）」
 - 「模式切换写回与平滑跳转/编辑刷新存在极窄竞态窗口（已知限制）——原因：TOC/行号跳转的 `scrollIntoView({behavior:'smooth'})` 动画与编辑后尾随 80ms 节流在途刷新（异常回退走 srcdoc 整页重建、加载完成滚动归零）都可能在写回之后继续改变 scrollTop；触发需「跳转/编辑后数百 ms 内切模式 + 恰逢重建」叠加，普通原地更新路径浏览器天然保留偏移、写回无害，2026-09-02 评估后接受不治本。若将来需要：写回推迟到下一帧（rAF）并在写入前校验文档版本」
 - 「srcdoc iframe 内点击锚点链接（目录/TOC）会黑屏或无响应——原因：Chromium 把 `about:srcdoc#fragment` 当作新的 iframe 导航而非同文档锚点滚动，帧文档会被替换；即使阻断导航，goldmark 仍会将中文 href fragment 百分号编码，而标题 DOM id 保持 Unicode，直接 `getElementById(href.slice(1))` 查不到。修复：父侧拦截帧内 click（sandbox 无 allow-scripts 帧内无法自理，allow-same-origin 允许跨帧 DOM），所有链接 preventDefault；fragment 先 `decodeURIComponent`（畸形编码回退原值）再 getElementById + scrollIntoView；★ 帧内事件 target 不能 `instanceof Element`（跨 realm），须用 closest」
@@ -188,6 +192,8 @@ docs/                    # 用户文档
 - 2026-08-29 源行号锚点由 Go 渲染期写入顶层块元素（`data-line`）而非前端解析渲染结果或 Go 另出行号数组——理由：渲染 HTML 无法反推源码行；前端正则会被 raw HTML 破坏顺序，而按序号对齐 DOM 的数组会因「链接定义不产元素、HTML 块可能产多元素」必然错位；goldmark 对 `data-` 前缀属性无条件放行，写入成本仅一个 ASTTransformer
 - 2026-08-29 预览行号栏用 CSS `content: attr(data-line)` + 绝对定位，而非父窗口行号列 + JS 测高 + scroll 同步——理由：零 JS 定位，行号随重排/换行/缩放自动跟随，天然随文档滚动；后者需逐块 `getComputedStyle`、每次渲染重建 DOM，且滚动同步易抖动
 - 2026-08-29 围栏代码块用包装层 div 承载行号，而非 `PreventSurroundingPre(true)` 自写 `<pre>`——理由：包装层下 Chroma 输出保持零变化（行包装 span 与 `<pre>` 开标签逐字保留），后者会连带删除行包装 span 并让 `hl_lines`/`linenos` 渲染路径失效
+- 2026-09-26 原生模态共享规则恢复 `margin: auto`，抵消外壳全局零外边距重置；CodeMirror 行号单元用特异性覆盖规则设为居中及对称内边距。
+- 2026-09-26 围栏复制控件由 Go 包装渲染器输出，复用预览文档委托点击和 Wails 剪贴板绑定；成功反馈仅在剪贴板写入成功后更新，原地更新继续复用同一委托监听。
 - 2026-09-25 启动默认模式与工具栏顺序改为 Editor / Preview / Split（`pane` 初始类 `pane editor-only`）——理由：默认起始页面改为编辑态，顺序首位即默认的既有约定不变，编辑列自启动可见
 - 2026-09-25 前端外壳与 Go embed 预览令牌统一切换为 Fluent 2 双主题调色板，并以契约测试约束暗浅色一致性——理由：预览运行在隔离 iframe，颜色需由两份样式表显式同步
 - 2026-09-25 目录侧栏调整为受边界限制的鼠标/键盘调宽，标题层级徽标移至每行右上角——理由：释放标题文本宽度，并保留 160px~420px 控制及 40px 折叠导轨

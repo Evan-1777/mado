@@ -112,6 +112,44 @@ pre code {
   font-size: 0.88em;
 }
 
+.md-line {
+  position: relative;
+}
+
+.copy-code-btn {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.45rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.md-line:hover .copy-code-btn,
+.md-line:focus-within .copy-code-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.copy-code-btn:hover,
+.copy-code-btn.copied {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.copy-code-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 blockquote {
   margin: 1em 0;
   padding: 0.15em 1.1em;

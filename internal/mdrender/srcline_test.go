@@ -41,6 +41,9 @@ func TestSourceLineCodeFence(t *testing.T) {
 	if want := `<div class="md-line" data-line="3"><pre class="chroma">`; !contains(out, want) {
 		t.Fatalf("code fence: wrapper must be followed by Chroma's pre: %q", out)
 	}
+	if want := `<button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button></div>`; !contains(out, want) {
+		t.Fatalf("code fence: copy control missing: %q", out)
+	}
 	// Proves PreventSurroundingPre is off: Chroma's per-line wrappers survive.
 	if want := `<span class="line"><span class="cl">`; !contains(out, want) {
 		t.Fatalf("code fence: Chroma line wrappers missing: %q", out)
@@ -54,6 +57,14 @@ func TestSourceLineCodeFence(t *testing.T) {
 		t.Fatalf("code fence: data-line must appear once (wrapper only), got %d: %q", n, solo)
 	}
 
+	noLanguage, err := Render("```\nx := 1\n```\n", false)
+	if err != nil {
+		t.Fatalf("render no-language fence: %v", err)
+	}
+	if n := strings.Count(noLanguage, "data-line"); n != 1 || !contains(noLanguage, `class="copy-code-btn"`) {
+		t.Fatalf("no-language fence: expected one source line and a copy control: %q", noLanguage)
+	}
+
 	plain, err := Render("# H\n\n```notalang\nx := 1\n```\n", false)
 	if err != nil {
 		t.Fatalf("render plain: %v", err)
@@ -63,6 +74,9 @@ func TestSourceLineCodeFence(t *testing.T) {
 	}
 	if want := `<pre><code class="language-notalang">`; !contains(plain, want) {
 		t.Fatalf("unhighlighted fence: plain pre/code missing: %q", plain)
+	}
+	if !contains(plain, `class="copy-code-btn"`) {
+		t.Fatalf("unhighlighted fence: copy control missing: %q", plain)
 	}
 
 	// {nohl=true} must survive: the transformer merges info-string attributes
@@ -80,6 +94,9 @@ func TestSourceLineCodeFence(t *testing.T) {
 	}
 	if !contains(nohl, "language-go") {
 		t.Fatalf("nohl fence: language class lost: %q", nohl)
+	}
+	if !contains(nohl, `class="copy-code-btn"`) {
+		t.Fatalf("nohl fence: copy control missing: %q", nohl)
 	}
 }
 

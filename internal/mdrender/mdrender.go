@@ -23,7 +23,7 @@ import (
 
 // renderCodeWrapper wraps every fenced code block in a
 // `<div class="md-line" data-line="N">` so the preview gutter can show the
-// block's source line.
+// block's source line and expose a copy control.
 //
 // The attribute has to live on the wrapper: Chroma owns the `<pre>` open tag
 // and we do not control it. The tempting alternative — writing our own `<pre>`
@@ -39,6 +39,7 @@ func renderCodeWrapper(w util.BufWriter, c highlighting.CodeBlockContext, enteri
 		if !c.Highlighted() {
 			_, _ = w.WriteString("</code></pre>")
 		}
+		_, _ = w.WriteString(`<button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button>`)
 		_, _ = w.WriteString("</div>\n")
 		return
 	}

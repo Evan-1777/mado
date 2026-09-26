@@ -189,6 +189,13 @@ has(baseCss, '::-webkit-scrollbar-thumb', 'preview scrollbar thumb');
 has(baseCss, 'background: var(--border);', 'preview scrollbar thumb border');
 
 // ---- dialogs: native semantics and submitter values survive restyling ----
+hasRule(css, '#close-dialog,', 'margin: auto', 'dialog centering');
+hasRule(css, ':root[data-theme] .cm-editor .cm-lineNumbers .cm-gutterElement', 'padding: 0 4px', 'centered line-number padding');
+hasRule(css, ':root[data-theme] .cm-editor .cm-lineNumbers .cm-gutterElement', 'text-align: center', 'centered line-number text');
+hasRule(baseCss, '.copy-code-btn', 'opacity: 0', 'copy button default visibility');
+hasRule(baseCss, '.md-line:hover .copy-code-btn', 'opacity: 1', 'copy button hover visibility');
+hasRule(baseCss, '.md-line:focus-within .copy-code-btn', 'opacity: 1', 'copy button keyboard visibility');
+hasRule(baseCss, '.copy-code-btn.copied', 'border-color: var(--accent)', 'copy success feedback');
 has(html, 'id="close-dialog"', 'close dialog');
 has(html, 'id="settings-dialog"', 'settings dialog');
 has(html, 'aria-labelledby="close-dialog-title"', 'close dialog title link');
