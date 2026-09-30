@@ -52,7 +52,7 @@ mado/
 │  ├─ src/style.css         # 外壳 Fluent 2 设计令牌与组件样式
 │  ├─ scripts/copy-assets.mjs # 共享前端静态资源拷贝（KaTeX CSS 与 woff2 字体等）
 │  └─ tests/                # Node 原生自检与无头浏览器检查
-├─ frontend/wailsjs/        # Wails 自动生成的前端绑定（由 Wails 生成，禁止手工修改）
+├─ frontend/wailsjs/        # Wails 生成的前端绑定（仓库跟踪副本供本地 esbuild 语法检查，新增 Go 导出方法须同步手补）
 ├─ frontend/dist/           # 前端构建产物（go:embed 嵌入 exe，FS 根目录，gitignored）
 ├─ build/bin/mado.exe       # Windows 最终打包二进制产物（云端 CI 产物）
 └─ docs/                    # 用户相关说明文档
@@ -100,6 +100,19 @@ mado/
 - 2026-09-30 剪贴板管道采用 Win32 GetForegroundWindow/OpenClipboard 原生写入前台根 HWND——理由：确定性触发 Win+V 剪贴板历史捕获，非 Windows 平台降级至标准 ClipboardSetText
 - Win32 原生剪贴板通过 needFree 标志追踪内存所有权并在 GlobalLock 或 SetClipboardData 失败时调用 GlobalFree 释放——系统接管后释放所有权，失败分支必须由应用负责释放以防止内存泄漏
 - 非 Windows 平台回退桩使用空白标识符入参——消除局部空白赋值死代码，保证多平台构建契约整洁
+- wailsjs 本地副本需与 Go 导出方法同步手补——wailsjs 由 wails 生成但仓库内提交的副本用于本地 esbuild 语法检查，新增 Go 导出方法时须同步手补 App.js/App.d.ts 以便本地验证，CI 生成版本以 Go 为准
+- 编辑器行号槽事件必须监听 cm.scrollDOM 而非 contentDOM——EditorView.domEventHandlers 仅挂载于 contentDOM，而 .cm-gutters 为兄弟节点，行号槽点击事件无法到达 contentDOM
+- iframe 帧内事件 target 跨 realm 判定不能使用 instanceof Element——不同 window 上下文的 Element 构造函数不同，跨 realm 判定恒假，须使用 closest 或 DOM 属性
+- 偏好保存失败场景测试必须使用 App.saveSettings 函数字段注入，禁止目录占位——main 包无法覆写 settings 包私有 storePath，目录占位法作用于二进制同目录，带配置运行测试会误删真实配置
+- `$` 行内公式首尾空格启发式与货币误判防护——`$5 and $10` 首尾含空格或未闭合不构成公式，直接退化为字面文本
+- 行内公式不支持跨行——语法边界清晰，避免未闭合 `$` 跨段污染后续内容渲染
+- 打开与拖放统一经 openPath()，未保存确认必须发生在 LoadFile 之前——避免取消确认后标题或 lastfile 已产生副作用，并消除拖放异步 Promise rejection 静默失败
+- 目录名常量以 settings.AppDir 为单一来源，两包禁止互相 import——跨包重复字面量靠 settings 单一来源收敛，启动迁移为唯一引用方
+- 多实例限制：应用已运行时双击新文件会启动第二实例——Wails v2 默认多实例且未启用 SingleInstance，待后续按需开启
+- 源行号锚点仅覆盖顶层块，缩进块与原始 HTML 块无锚点，跳转粒度为渲染块——goldmark 部分渲染器忽略属性，多行块内部行仅能将整块置顶
+- 原生模态共享规则必须显式声明 margin: auto——外壳全局 `* { margin: 0 }` 会覆盖浏览器原生 `<dialog>` 默认自动外边距，须恢复以保证模态居中
+- 配置文件写保护限制：exe 部署于受写保护目录时持久化不可写——便携化设计将 settings.json 存放在 exe 同目录，写保护属于已知环境限制
+- 安全审查立场：接受内联 on* 与远程图片保持默认 HTML 语义——CSP 或额外 HTML 过滤会破坏默认 HTML 与远程图片语义，内联事件由 sandbox 与父侧链接拦截兜底
 - Chroma 围栏代码块的 data-line 落在包装层 div 上，禁止改用 chromahtml.PreventSurroundingPre 自写 pre——Chroma 的 pre 开标签不受控，包装层是唯一稳定注入点，修改会破坏行包装 span 与高亮渲染路径
 - AST 变换器标注围栏块前必须合并 info 串属性，且未高亮围栏块由包装渲染器补齐 pre/code——goldmark-highlighting 在已有属性时跳过 info 串解析，且包装渲染器接管时上游不再输出默认 pre/code 标签
 - 围栏代码块复制按钮仅覆盖 highlighting.WithWrapperRenderer 包裹的 fenced code——四空格缩进代码块由 goldmark 独立路径渲染且无共享包装层，不引入多余包装以保持原有行号边界
@@ -141,5 +154,4 @@ mado/
 | 模块增删、重构，依赖方向变化 | 结构 |
 | 命名、语言、日志规范调整 | 约定 |
 | 新坑、新约束、选型定型 | 约束与决策 |
-| 外部服务接入或下线 | 外部集成 |
 | 新增项目特有名词 | 术语 |
