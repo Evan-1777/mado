@@ -24,7 +24,7 @@
 ## 1. 概述
 
 - **一句话定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **当前阶段**：开发中（v1.12：恢复设置/未保存模态居中、编辑器行号数字居中，并为围栏代码块增加剪贴板复制；Windows 原生交互待手动验收）
+- **当前阶段**：开发中（v1.13：支持窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道及 09-30-v1 审阅吸收修复；Windows 原生交互待手动验收）
 - **非目标（不做什么）**：见 SCOPE.md 设计原则；v1 不做多标签页、插件系统、导出 HTML/PDF、Mermaid 图表。
 
 ## 2. 环境与运行
@@ -148,7 +148,8 @@ docs/                    # 用户文档
 - 「★ 编辑列在 Preview 模式为 `display:none`，切回 Editor/Split 后必须在生产端同步执行 `view.measure()`——原因：CodeMirror 仅通过异步 Intersection/ResizeObserver 感知可见性恢复（ResizeObserver 回调还带 75ms 静默判定），若仅调用异步 `requestMeasure()`（只排期 rAF），切换后立即发起的选区派发、跳转或自动化操作将拿到 0x0 陈旧测量；在源头同步执行测量确保几何即刻就绪，测试端亦无需穿透调用内部私有 measure」
 - 「直接写 `scroller.scrollTop` 的偏移不被 CodeMirror 视口跟踪——原因：视图位置由视口行范围与行高估算共同决定，裸写 DOM 偏移只移动浏览器滚动位置而不更新视口，故其后任一次 `measure()` 都会按视口重锚内容，实测偏移 3000→3294；自动化用例须经 `view.dispatch({selection, scrollIntoView})` 表达滚动，并等待效果落地后再断言」
 - 「★ 聚焦选区规则带 `.cm-selectionLayer` 层级类（`:root[data-theme] .cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground`）——原因：CodeMirror 主题由 style-mod 动态挂载于 head.firstChild，baseTheme 的 focused 选区包含 `.cm-editor.ͼdark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`（特异性 (0,6,0)），oneDark 为 (0,5,0)；外壳聚焦选择器为 (0,6,0)，匹配 baseTheme 并胜过 oneDark，结合外壳 `<link>` 位于 style-mod 之后的文档级层叠顺序，确定性覆盖两套内置选区背景」
-- 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
+- 「跨语言常量需成对维护并加联动注释——原因：Go `settings.MaxPreviewFontLen`（按字节）对应 index.html `maxlength="100"`（按 UTF-16 单位），Go `settings.DefaultPreviewFont` 对应 main.ts `DEFAULT_PREVIEW_FONT`，Go `settings.MinWindowWidth` / `settings.MinWindowHeight` 对应 main.ts `MIN_WINDOW_WIDTH` / `MIN_WINDOW_HEIGHT`；二者无法自动联动，非 BMP 字符的字体名会先撞 Go 的字节上限（仅拒绝该值，无副作用）」
+- 「窗口 resize 防抖与退出 flushWindowState 存在极窄并发写窗口（已知限制）——原因：前端 resize 监听引入 250ms 尾随防抖，用户若在防抖触发执行尚未返回的极短瞬间按下关闭，关闭链路的 flushWindowState 会清除 timer 并发起第二次并发 SetWindowSize；两次写入快照相同且幂等，结果完全正确，仅产生一次冗余 IPC 与磁盘刷盘，已作为已知限制接受（2026-09-30）」
 
 - 「文档保存采用同目录临时文件 + 原文件权限 + `Sync()` + `Rename` 的最佳努力替换，并先解析符号链接真实目标」——原因：写入、刷盘或改名失败时清理临时文件并保留旧目标，保存链接不会把链接替换成普通文件；目标目录必须具备创建/改名权限，权限不足时保持失败而不回退到截断覆写；不宣称 Windows 与底层文件系统具备跨平台绝对断电原子性
 - 「App 绑定状态由单一 `sync.RWMutex` 守护，关闭回调只能调用 `shouldPreventClose()` 快照，共享 JSON 的 settings/lastfile 写路径在进程内串行化」——原因：Wails 绑定运行在独立 goroutine；跨进程多实例竞争仍是已接受边界
@@ -170,6 +171,8 @@ docs/                    # 用户文档
 
 ## 8. 决策记录
 
+- 2026-09-30（09-30-v2 批判性修复）针对 09-30-v1 审阅报告采用最短有效差分：① Win32 原生剪贴板资源闭环：在 `app_windows.go` 中引入 `procGlobalFree`，通过 `needFree` 标志追踪所有权并在 `GlobalLock` 或 `SetClipboardData` 失败时确保 `GlobalFree(hMem)` 释放，系统接管后转移责任；② 清理非 Windows 回退桩死代码：`app_other.go` 使用 `_ string` 替代局部 `_ = text` 空白赋值；③ 补齐跨端常量联动互指注释：在 `frontend/src/main.ts` 与 `internal/settings/settings.go` 中为 `MIN_WINDOW_WIDTH` / `MIN_WINDOW_HEIGHT` 和 `MinWindowWidth` / `MinWindowHeight` 增加对称互指注释；④ 窗口尺寸独立校验与长 SVG 字符串维持克制设计：确认宽高独立反序列化配合 App 层钳制安全自洽，单行 SVG 遵循最短有效差分保持原状。
+- 2026-09-30 窗口状态记忆与原生剪贴板体验升级：持久化窗口宽高与最大化偏好至 exe 目录 settings.json，启动时预读注入并由 persist 统一通道管理；引入 250ms 防抖更新与关闭时 flushWindowState 刷盘；通过 Win32 GetForegroundWindow/GetAncestor/OpenClipboard 原生管道写入宿主根 HWND，触发 Win+V 剪贴板历史捕获；围栏代码块采用纯 CSS 双态 SVG 图标复制按钮。
 - 2026-09-25 目录逻辑抽取至 `frontend/src/toc.ts`：围栏仅由同类且长度不短于开围栏的独立闭合行结束，ATX 尾随两个及以上井号仅在前有空格时剥离，单个结尾井号作为标题文本保留；同层级同文本的重复标题按出现序号分别恢复折叠状态。`tocGutter.test.ts` 直接导入生产模块，覆盖围栏边界、C#/F#/Part # 标题与重复状态——理由：测试和目录共用实现以避免复制解析逻辑造成假阳性；序号映射维持轻量模型，不建立跨编辑稳定身份系统。
 - 2026-09-10（09-10-v3 批判性修复）针对 09-10-v2 审计遗留问题进行治本重构：① 根除临时脚本残留：彻底清理未跟踪的调试副本 `debug_inspect.mjs` 与 `debug_raf.mjs`，恢复工作区清洁；② 恢复预览选区高亮正交性：删除 `base.css` 全局 `::selection` 的 `color: var(--fg)`，消除划选代码时单极覆盖为普通正文导致的语法高亮整层丢失，保持与 CodeMirror 独立图层选区体验严格对称；③ 模式切换测量源头闭环：在 `main.ts` 模式切回编辑列时直接同步调用 `view.measure()`（带降级 `requestMeasure()`），在生产源头彻底消除 0x0 几何真空期与竞态窗口，测试端解除对私有 `view.measure()` 的穿透调用，改由标准 `coordsAtPos` 触发测量读；④ 修正 CodeMirror 样式层叠认知：理清 style-mod 运行时注入 head.firstChild、baseTheme (0,6,0) 与 downstream `<link>` 级联机制，纠正“esbuild 打包排序”与“纯特异性确定胜出”的脱节断言。
 - 2026-09-10（09-10-v2 批判性修复）本轮归档审计的 6 项遗留问题采用最小确定化差分：① 语义令牌回归调色板单一来源——`--selection-bg` / `--editor-active-line` 的半透明字面量上移为 raw palette 的 `--blue-600-a45` / `--white-a04` / `--zinc-900-a04`，语义层只留 `var()` 引用；② 聚焦选区选择器补 `.cm-selectionLayer`，以特异性而非样式表加载顺序压过 oneDark；③ 模式切换显式 `cm.requestMeasure()`，消除 `display:none → 显示` 的测量真空期；④ 无头选区用例派发前后各一次同步 `view.measure()`（公开 `requestMeasure()` 只调度动画帧，实测仍有 2/20 超时），并把 `cmTile` 私有访问收敛到单 helper、失效时抛明确错误；⑤ 预览 `::selection` 增加 `color: var(--fg)`，消除深色代码块蓝底蓝字（原对比度约 1.93:1）。未采纳：提升选区层 z-index（会盖住文字造成模糊）、把公开 `requestMeasure()` 当作测试同步手段。外壳既有的 `--surface-glass` / `--backdrop` / `--accent-soft` 半透明字面量保持现状，不在本轮范围

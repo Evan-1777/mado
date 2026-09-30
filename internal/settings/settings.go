@@ -32,6 +32,7 @@ const (
 	DefaultPreviewFont = "Cascadia Code"
 
 	// Window dimension bounds and defaults.
+	// Linked: frontend/src/main.ts MIN_WINDOW_WIDTH / MIN_WINDOW_HEIGHT
 	MinWindowWidth      = 720
 	MinWindowHeight     = 520
 	DefaultWindowWidth  = 1280

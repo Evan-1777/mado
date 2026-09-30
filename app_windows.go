@@ -20,6 +20,7 @@ var (
 	procCloseClipboard      = user32.NewProc("CloseClipboard")
 
 	procGlobalAlloc  = kernel32.NewProc("GlobalAlloc")
+	procGlobalFree   = kernel32.NewProc("GlobalFree")
 	procGlobalLock   = kernel32.NewProc("GlobalLock")
 	procGlobalUnlock = kernel32.NewProc("GlobalUnlock")
 	procLstrcpyW     = kernel32.NewProc("lstrcpyW")
@@ -59,6 +60,12 @@ func setNativeClipboard(text string) error {
 	if hMem == 0 {
 		return err
 	}
+	needFree := true
+	defer func() {
+		if needFree {
+			procGlobalFree.Call(hMem)
+		}
+	}()
 
 	ptr, _, err := procGlobalLock.Call(hMem)
 	if ptr == 0 {
@@ -73,5 +80,6 @@ func setNativeClipboard(text string) error {
 		return err
 	}
 
+	needFree = false
 	return nil
 }

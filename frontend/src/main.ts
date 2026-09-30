@@ -40,6 +40,7 @@ interface Settings {
 // Keep in sync with settings.DefaultPreviewFont (Go side).
 const DEFAULT_PREVIEW_FONT = 'Cascadia Code';
 
+// Keep in sync with settings.MinWindowWidth / settings.MinWindowHeight (Go side).
 const MIN_WINDOW_WIDTH = 720;
 const MIN_WINDOW_HEIGHT = 520;
 let lastNormalWidth = Math.max(window.innerWidth || 1280, MIN_WINDOW_WIDTH);
