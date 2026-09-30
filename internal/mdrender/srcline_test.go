@@ -41,8 +41,17 @@ func TestSourceLineCodeFence(t *testing.T) {
 	if want := `<div class="md-line" data-line="3"><pre class="chroma">`; !contains(out, want) {
 		t.Fatalf("code fence: wrapper must be followed by Chroma's pre: %q", out)
 	}
-	if want := `<button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button></div>`; !contains(out, want) {
-		t.Fatalf("code fence: copy control missing: %q", out)
+	if want := `class="copy-code-btn" type="button" aria-label="复制代码" title="复制代码"`; !contains(out, want) {
+		t.Fatalf("code fence: copy control button missing: %q", out)
+	}
+	if want := `class="copy-icon"`; !contains(out, want) {
+		t.Fatalf("code fence: copy icon missing: %q", out)
+	}
+	if want := `class="copied-icon"`; !contains(out, want) {
+		t.Fatalf("code fence: copied icon missing: %q", out)
+	}
+	if !contains(out, `</button></div>`) {
+		t.Fatalf("code fence: button closing wrapper missing: %q", out)
 	}
 	// Proves PreventSurroundingPre is off: Chroma's per-line wrappers survive.
 	if want := `<span class="line"><span class="cl">`; !contains(out, want) {

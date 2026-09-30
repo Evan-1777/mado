@@ -38,6 +38,10 @@ export function SaveFile(arg1, arg2) {
   return window['go']['main']['App']['SaveFile'](arg1, arg2);
 }
 
+export function SetClipboard(arg1) {
+  return window['go']['main']['App']['SetClipboard'](arg1);
+}
+
 export function SetDirty(arg1) {
   return window['go']['main']['App']['SetDirty'](arg1);
 }
@@ -56,6 +60,14 @@ export function SetTheme(arg1) {
 
 export function SetTitle(arg1) {
   return window['go']['main']['App']['SetTitle'](arg1);
+}
+
+export function SetWindowMaximized(arg1) {
+  return window['go']['main']['App']['SetWindowMaximized'](arg1);
+}
+
+export function SetWindowSize(arg1, arg2) {
+  return window['go']['main']['App']['SetWindowSize'](arg1, arg2);
 }
 
 export function SetWrap(arg1) {

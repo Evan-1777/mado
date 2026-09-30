@@ -10,6 +10,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"mado/internal/settings"
 )
 
 //go:embed all:frontend/dist
@@ -22,13 +24,25 @@ func main() {
 		app.SetStartupFile(os.Args[1])
 	}
 
+	s := settings.Default()
+	if loaded, err := settings.Load(); err == nil {
+		s = loaded
+	}
+	app.settings = s
+
+	startState := options.Normal
+	if s.WindowMaximized {
+		startState = options.Maximised
+	}
+
 	err := wails.Run(&options.App{
-		Title:     "Mado",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  720,
-		MinHeight: 520,
-		Frameless: true,
+		Title:            "Mado",
+		Width:            s.WindowWidth,
+		Height:           s.WindowHeight,
+		MinWidth:         settings.MinWindowWidth,
+		MinHeight:        settings.MinWindowHeight,
+		WindowStartState: startState,
+		Frameless:        true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

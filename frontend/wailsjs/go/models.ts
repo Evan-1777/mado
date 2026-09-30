@@ -5,6 +5,9 @@ export namespace settings {
 	    Wrap: boolean;
 	    Math: boolean;
 	    PreviewFont: string;
+	    WindowWidth: number;
+	    WindowHeight: number;
+	    WindowMaximized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -16,6 +19,9 @@ export namespace settings {
 	        this.Wrap = source["Wrap"];
 	        this.Math = source["Math"];
 	        this.PreviewFont = source["PreviewFont"];
+	        this.WindowWidth = source["WindowWidth"];
+	        this.WindowHeight = source["WindowHeight"];
+	        this.WindowMaximized = source["WindowMaximized"];
 	    }
 	}
 

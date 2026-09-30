@@ -157,12 +157,28 @@ func TestLastFileFailureIsBestEffort(t *testing.T) {
 func TestPersistFailureKeepsState(t *testing.T) {
 	newApp := func() *App {
 		return &App{
-			settings: settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"},
+			settings: settings.Settings{
+				Theme:           "dark",
+				Wrap:            true,
+				Math:            true,
+				PreviewFont:     "Fira Code",
+				WindowWidth:     settings.DefaultWindowWidth,
+				WindowHeight:    settings.DefaultWindowHeight,
+				WindowMaximized: false,
+			},
 			// A store that refuses every write.
 			saveSettings: func(settings.Settings) error { return errors.New("store not writable") },
 		}
 	}
-	unchanged := settings.Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Fira Code"}
+	unchanged := settings.Settings{
+		Theme:           "dark",
+		Wrap:            true,
+		Math:            true,
+		PreviewFont:     "Fira Code",
+		WindowWidth:     settings.DefaultWindowWidth,
+		WindowHeight:    settings.DefaultWindowHeight,
+		WindowMaximized: false,
+	}
 
 	t.Run("SetPreviewFont", func(t *testing.T) {
 		a := newApp()
@@ -203,6 +219,66 @@ func TestPersistFailureKeepsState(t *testing.T) {
 			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
 		}
 	})
+
+	t.Run("SetWindowSize", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetWindowSize(1024, 768); err == nil {
+			t.Fatal("SetWindowSize should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
+
+	t.Run("SetWindowMaximized", func(t *testing.T) {
+		a := newApp()
+		if err := a.SetWindowMaximized(true); err == nil {
+			t.Fatal("SetWindowMaximized should fail when the store is not writable")
+		}
+		if a.settings != unchanged {
+			t.Fatalf("failed save mutated in-memory settings: got %+v, want %+v", a.settings, unchanged)
+		}
+	})
+}
+
+// TestWindowAndClipboardBindings verifies orthogonal setter behavior and bounds clamping.
+func TestWindowAndClipboardBindings(t *testing.T) {
+	var saved settings.Settings
+	a := NewApp()
+	a.settings = settings.Default()
+	a.saveSettings = func(s settings.Settings) error {
+		saved = s
+		return nil
+	}
+
+	if err := a.SetWindowSize(1024, 768); err != nil {
+		t.Fatalf("SetWindowSize: %v", err)
+	}
+	if saved.WindowWidth != 1024 || saved.WindowHeight != 768 || saved.WindowMaximized {
+		t.Fatalf("SetWindowSize unexpected saved state: %+v", saved)
+	}
+
+	// Maximizing leaves width and height unmolested
+	if err := a.SetWindowMaximized(true); err != nil {
+		t.Fatalf("SetWindowMaximized: %v", err)
+	}
+	if !saved.WindowMaximized || saved.WindowWidth != 1024 || saved.WindowHeight != 768 {
+		t.Fatalf("SetWindowMaximized overwrote window dimensions: %+v", saved)
+	}
+
+	// Below minimum size is clamped
+	if err := a.SetWindowSize(400, 300); err != nil {
+		t.Fatalf("SetWindowSize clamped: %v", err)
+	}
+	if saved.WindowWidth != settings.MinWindowWidth || saved.WindowHeight != settings.MinWindowHeight {
+		t.Fatalf("SetWindowSize did not clamp to min: got %dx%d, want %dx%d",
+			saved.WindowWidth, saved.WindowHeight, settings.MinWindowWidth, settings.MinWindowHeight)
+	}
+
+	// SetClipboard succeeds without error
+	if err := a.SetClipboard("test clipboard"); err != nil {
+		t.Fatalf("SetClipboard: %v", err)
+	}
 }
 
 // TestConcurrentBindingsNoRace exercises the Wails-style concurrent binding

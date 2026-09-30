@@ -10,8 +10,9 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import {
   LoadFile, SaveFile, Render, GetCSS, GetSettings, SetTheme, SetDirty,
   ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
+  SetClipboard, SetWindowSize, SetWindowMaximized,
 } from '../wailsjs/go/main/App';
-import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
+import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowGetSize, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
 import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
@@ -31,10 +32,19 @@ interface Settings {
   Wrap: boolean;
   Math: boolean;
   PreviewFont: string;
+  WindowWidth?: number;
+  WindowHeight?: number;
+  WindowMaximized?: boolean;
 }
 
 // Keep in sync with settings.DefaultPreviewFont (Go side).
 const DEFAULT_PREVIEW_FONT = 'Cascadia Code';
+
+const MIN_WINDOW_WIDTH = 720;
+const MIN_WINDOW_HEIGHT = 520;
+let lastNormalWidth = Math.max(window.innerWidth || 1280, MIN_WINDOW_WIDTH);
+let lastNormalHeight = Math.max(window.innerHeight || 800, MIN_WINDOW_HEIGHT);
+let windowStateTimer: number | null = null;
 
 let currentTheme: 'dark' | 'light' = 'dark';
 let currentPreviewFont = '';  // last validated preview font ('' until loaded)
@@ -732,18 +742,25 @@ function hookPreviewLinks() {
       e.preventDefault();
       const code = copyButton.closest('.md-line')?.querySelector('pre')?.textContent;
       if (code === undefined) return;
+      const textToCopy = code.replace(/\n$/, '');
       try {
-        if (!await ClipboardSetText(code.replace(/\n$/, ''))) return;
+        await SetClipboard(textToCopy);
       } catch {
-        return;
+        try {
+          if (!await ClipboardSetText(textToCopy)) return;
+        } catch {
+          return;
+        }
       }
-      copyButton.textContent = '已复制';
       copyButton.classList.add('copied');
+      copyButton.setAttribute('aria-label', '已复制');
+      copyButton.setAttribute('title', '已复制');
       const previous = copyResetTimers.get(copyButton);
       if (previous !== undefined) window.clearTimeout(previous);
       copyResetTimers.set(copyButton, window.setTimeout(() => {
-        copyButton.textContent = '复制代码';
         copyButton.classList.remove('copied');
+        copyButton.setAttribute('aria-label', '复制代码');
+        copyButton.setAttribute('title', '复制代码');
         copyResetTimers.delete(copyButton);
       }, 1200));
       return;
@@ -975,10 +992,42 @@ function askUnsaved(): Promise<'yes' | 'no' | 'cancel'> {
   });
 }
 
+async function flushWindowState() {
+  if (windowStateTimer !== null) {
+    window.clearTimeout(windowStateTimer);
+    windowStateTimer = null;
+  }
+  try {
+    const isMax = await WindowIsMaximised();
+    if (isMax) {
+      await SetWindowMaximized(true);
+    } else {
+      let w = lastNormalWidth;
+      let h = lastNormalHeight;
+      try {
+        const size = await WindowGetSize();
+        if (size && size.w >= MIN_WINDOW_WIDTH && size.h >= MIN_WINDOW_HEIGHT) {
+          w = size.w;
+          h = size.h;
+        }
+      } catch {
+        // runtime not ready or unsupported
+      }
+      lastNormalWidth = w;
+      lastNormalHeight = h;
+      await SetWindowSize(w, h);
+      await SetWindowMaximized(false);
+    }
+  } catch (err) {
+    console.error('flushWindowState failed', err);
+  }
+}
+
 // Title-bar close button: clean state exits immediately, dirty state runs the
 // save confirmation.
 async function requestClose() {
   if (!dirty) {
+    await flushWindowState();
     ForceQuit();
     return;
   }
@@ -1002,6 +1051,7 @@ async function handleCloseFlow() {
       const ok = await saveCurrent();
       if (!ok) return; // save failed or user cancelled Save As: keep editing
     }
+    await flushWindowState();
     ForceQuit();
   } finally {
     closePending = false;
@@ -1066,6 +1116,12 @@ window.addEventListener('resize', () => {
     resizeSyncTimer = null;
     void syncMaximisedState();
   }, 100);
+
+  if (windowStateTimer !== null) window.clearTimeout(windowStateTimer);
+  windowStateTimer = window.setTimeout(() => {
+    windowStateTimer = null;
+    void flushWindowState();
+  }, 250);
 });
 
 // ---------------------------------------------------------------- toolbar & settings actions
@@ -1218,6 +1274,8 @@ async function init() {
   void syncMaximisedState();
   try {
     const s = await GetSettings();
+    if (s.WindowWidth && s.WindowWidth >= MIN_WINDOW_WIDTH) lastNormalWidth = s.WindowWidth;
+    if (s.WindowHeight && s.WindowHeight >= MIN_WINDOW_HEIGHT) lastNormalHeight = s.WindowHeight;
     applyTheme(s.Theme === 'light' ? 'light' : 'dark', false);
     applyWrap(s.Wrap !== false);
     currentPreviewFont = s.PreviewFont || DEFAULT_PREVIEW_FONT;

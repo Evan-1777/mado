@@ -39,7 +39,7 @@ func renderCodeWrapper(w util.BufWriter, c highlighting.CodeBlockContext, enteri
 		if !c.Highlighted() {
 			_, _ = w.WriteString("</code></pre>")
 		}
-		_, _ = w.WriteString(`<button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button>`)
+		_, _ = w.WriteString(`<button class="copy-code-btn" type="button" aria-label="复制代码" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5V2.5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 1.5 2.5v6a1.5 1.5 0 0 0 1.5 1.5h1"/></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.25 4.75L6 12l-3.25-3.25"/></svg></button>`)
 		_, _ = w.WriteString("</div>\n")
 		return
 	}

@@ -53,8 +53,11 @@ window.go = { main: { App: {
   OpenFileDialog: () => Promise.resolve(state.openPath),
   Render: (md) => {
     state.renderInputs.push(md);
-    return Promise.resolve('<div class="md-line" data-line="1"><pre class="chroma"><code>copy me\\n</code></pre><button class="copy-code-btn" type="button" aria-label="复制代码">复制代码</button></div>');
+    return Promise.resolve('<div class="md-line" data-line="1"><pre class="chroma"><code>copy me\\n</code></pre><button class="copy-code-btn" type="button" aria-label="复制代码" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5V2.5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 1.5 2.5v6a1.5 1.5 0 0 0 1.5 1.5h1"/></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.25 4.75L6 12l-3.25-3.25"/></svg></button></div>');
   },
+  SetClipboard: (text) => { state.clip = text; return Promise.resolve(); },
+  SetWindowSize: (w, h) => { state.windowSize = { w, h }; return Promise.resolve(); },
+  SetWindowMaximized: (m) => { state.windowMaximized = m; return Promise.resolve(); },
   SetDirty: (value) => { state.dirtyCalls.push(value); return Promise.resolve(); },
   SetTheme: () => Promise.resolve(),
   SetWrap: () => Promise.resolve(),
@@ -64,7 +67,9 @@ window.go = { main: { App: {
 } } };
 window.runtime = {
   WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
-  WindowIsMaximised: () => Promise.resolve(false), WindowSetTitle(){},
+  WindowIsMaximised: () => Promise.resolve(false),
+  WindowGetSize: () => Promise.resolve({ w: 1280, h: 800 }),
+  WindowSetTitle(){},
   EventsOn(){}, OnFileDrop(callback){ state.onDrop = callback; },
   ClipboardSetText(text){ state.clip = text; return Promise.resolve(true); },
   WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
@@ -112,10 +117,10 @@ const scenario = `<script>
     stage = 'copy-code-block';
     const copyButton = frameDoc.querySelector('.copy-code-btn');
     copyButton.click();
-    await waitFor(() => copyButton.textContent === '已复制');
+    await waitFor(() => copyButton.classList.contains('copied'));
     results.push({
       name: 'copy-code-block',
-      ok: state.clip === 'copy me' && copyButton.textContent === '已复制' && copyButton.classList.contains('copied'),
+      ok: state.clip === 'copy me' && copyButton.getAttribute('aria-label') === '已复制' && copyButton.classList.contains('copied'),
     });
     let styleMutations = 0;
     let articleMutations = 0;
@@ -158,12 +163,13 @@ const scenario = `<script>
         state.renderInputs.length === 2 && styleMutations === 0 && articleMutations === 0,
     });
     state.clip = '';
+    stage = 'copy-after-in-place-update';
     const updatedCopyButton = frameDoc.querySelector('.copy-code-btn');
     updatedCopyButton.click();
-    await waitFor(() => updatedCopyButton.textContent === '已复制');
+    await waitFor(() => updatedCopyButton.classList.contains('copied'));
     results.push({
       name: 'copy-after-in-place-update',
-      ok: state.clip === 'copy me' && updatedCopyButton.textContent === '已复制' && updatedCopyButton.classList.contains('copied'),
+      ok: state.clip === 'copy me' && updatedCopyButton.getAttribute('aria-label') === '已复制' && updatedCopyButton.classList.contains('copied'),
     });
 
     // Mode tabs carry ARIA state, and the confirm dialog keeps the three

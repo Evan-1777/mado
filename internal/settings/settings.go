@@ -17,10 +17,13 @@ const (
 	AppDir = "Mado"
 
 	// JSON keys for persisted settings.
-	themeKey       = "theme"
-	wrapKey        = "wrap"
-	mathKey        = "math"
-	previewFontKey = "previewFont"
+	themeKey           = "theme"
+	wrapKey            = "wrap"
+	mathKey            = "math"
+	previewFontKey     = "previewFont"
+	windowWidthKey     = "windowWidth"
+	windowHeightKey    = "windowHeight"
+	windowMaximizedKey = "windowMaximized"
 
 	// Default values for preferences.
 	DefaultTheme       = "dark"
@@ -28,16 +31,25 @@ const (
 	DefaultMath        = true
 	DefaultPreviewFont = "Cascadia Code"
 
+	// Window dimension bounds and defaults.
+	MinWindowWidth      = 720
+	MinWindowHeight     = 520
+	DefaultWindowWidth  = 1280
+	DefaultWindowHeight = 800
+
 	// MaxPreviewFontLen is the maximum accepted length of a preview font name.
 	MaxPreviewFontLen = 100
 )
 
 // Settings holds user preferences persisted to disk.
 type Settings struct {
-	Theme       string
-	Wrap        bool
-	Math        bool
-	PreviewFont string
+	Theme           string
+	Wrap            bool
+	Math            bool
+	PreviewFont     string
+	WindowWidth     int
+	WindowHeight    int
+	WindowMaximized bool
 }
 
 // FontRejected is returned by NormalizePreviewFont when the input is not a
@@ -96,10 +108,13 @@ func Path() (string, error) {
 // Default returns the default user preferences.
 func Default() Settings {
 	return Settings{
-		Theme:       DefaultTheme,
-		Wrap:        DefaultWrap,
-		Math:        DefaultMath,
-		PreviewFont: DefaultPreviewFont,
+		Theme:           DefaultTheme,
+		Wrap:            DefaultWrap,
+		Math:            DefaultMath,
+		PreviewFont:     DefaultPreviewFont,
+		WindowWidth:     DefaultWindowWidth,
+		WindowHeight:    DefaultWindowHeight,
+		WindowMaximized: false,
 	}
 }
 
@@ -138,6 +153,15 @@ func Load() (Settings, error) {
 			s.PreviewFont = valid
 		}
 	}
+	if w, ok := store[windowWidthKey].(float64); ok && int(w) >= MinWindowWidth {
+		s.WindowWidth = int(w)
+	}
+	if h, ok := store[windowHeightKey].(float64); ok && int(h) >= MinWindowHeight {
+		s.WindowHeight = int(h)
+	}
+	if max, ok := store[windowMaximizedKey].(bool); ok {
+		s.WindowMaximized = max
+	}
 	return s, nil
 }
 
@@ -159,6 +183,9 @@ func Save(s Settings) error {
 	store[wrapKey] = s.Wrap
 	store[mathKey] = s.Math
 	store[previewFontKey] = s.PreviewFont
+	store[windowWidthKey] = s.WindowWidth
+	store[windowHeightKey] = s.WindowHeight
+	store[windowMaximizedKey] = s.WindowMaximized
 	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return err

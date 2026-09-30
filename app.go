@@ -65,6 +65,11 @@ func (a *App) startup(ctx context.Context) {
 			_ = migrateLegacyStore(src, dst)
 		}
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.settings.WindowWidth >= settings.MinWindowWidth {
+		return
+	}
 	s, err := settings.Load()
 	if err != nil {
 		// Best effort: fall back to defaults.
@@ -187,6 +192,32 @@ func (a *App) SetPreviewFont(font string) error {
 		return err
 	}
 	return a.persist(func(s *settings.Settings) { s.PreviewFont = name })
+}
+
+// SetWindowSize persists the window normal width and height.
+func (a *App) SetWindowSize(width, height int) error {
+	if width < settings.MinWindowWidth {
+		width = settings.MinWindowWidth
+	}
+	if height < settings.MinWindowHeight {
+		height = settings.MinWindowHeight
+	}
+	return a.persist(func(s *settings.Settings) {
+		s.WindowWidth = width
+		s.WindowHeight = height
+	})
+}
+
+// SetWindowMaximized persists whether the window is currently maximised.
+func (a *App) SetWindowMaximized(maximized bool) error {
+	return a.persist(func(s *settings.Settings) {
+		s.WindowMaximized = maximized
+	})
+}
+
+// SetClipboard copies text to the system clipboard using host-bound native channels.
+func (a *App) SetClipboard(text string) error {
+	return setNativeClipboard(text)
 }
 
 // SetTitle updates the native window title.

@@ -28,7 +28,15 @@ func TestDefaultSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	want := Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "Cascadia Code"}
+	want := Settings{
+		Theme:           "dark",
+		Wrap:            true,
+		Math:            true,
+		PreviewFont:     "Cascadia Code",
+		WindowWidth:     DefaultWindowWidth,
+		WindowHeight:    DefaultWindowHeight,
+		WindowMaximized: false,
+	}
 	if s != want {
 		t.Fatalf("default settings = %+v, want %+v", s, want)
 	}
@@ -37,7 +45,15 @@ func TestDefaultSettings(t *testing.T) {
 // TestSaveReload verifies saved settings survive a reload.
 func TestSaveReload(t *testing.T) {
 	withTempStore(t)
-	want := Settings{Theme: "light", Wrap: false, Math: false, PreviewFont: "Cascadia Code"}
+	want := Settings{
+		Theme:           "light",
+		Wrap:            false,
+		Math:            false,
+		PreviewFont:     "Cascadia Code",
+		WindowWidth:     1440,
+		WindowHeight:    900,
+		WindowMaximized: true,
+	}
 	if err := Save(want); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -65,7 +81,14 @@ func TestPreserveUnrelatedKeys(t *testing.T) {
 		t.Fatalf("write initial: %v", err)
 	}
 
-	if err := Save(Settings{Theme: "light", Wrap: false, Math: true}); err != nil {
+	if err := Save(Settings{
+		Theme:           "light",
+		Wrap:            false,
+		Math:            true,
+		WindowWidth:     DefaultWindowWidth,
+		WindowHeight:    DefaultWindowHeight,
+		WindowMaximized: false,
+	}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -89,9 +112,12 @@ func TestPreserveUnrelatedKeys(t *testing.T) {
 func TestTypeMismatchFallback(t *testing.T) {
 	p := withTempStore(t)
 	invalid := map[string]any{
-		"theme": 123,
-		"wrap":  "yes",
-		"math":  nil,
+		"theme":           123,
+		"wrap":            "yes",
+		"math":            nil,
+		"windowWidth":     "wide",
+		"windowHeight":    200.0,
+		"windowMaximized": "notabool",
 	}
 	b, err := json.Marshal(invalid)
 	if err != nil {
@@ -105,7 +131,15 @@ func TestTypeMismatchFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load with corrupt types returned error: %v", err)
 	}
-	want := Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: DefaultPreviewFont}
+	want := Settings{
+		Theme:           "dark",
+		Wrap:            true,
+		Math:            true,
+		PreviewFont:     DefaultPreviewFont,
+		WindowWidth:     DefaultWindowWidth,
+		WindowHeight:    DefaultWindowHeight,
+		WindowMaximized: false,
+	}
 	if s != want {
 		t.Fatalf("fallback settings = %+v, want %+v", s, want)
 	}
@@ -126,7 +160,15 @@ func TestDefaultSettingsPreviewFont(t *testing.T) {
 // TestSaveReloadPreviewFont verifies the preview font survives a save/reload cycle.
 func TestSaveReloadPreviewFont(t *testing.T) {
 	withTempStore(t)
-	want := Settings{Theme: "dark", Wrap: true, Math: true, PreviewFont: "JetBrains Mono"}
+	want := Settings{
+		Theme:           "dark",
+		Wrap:            true,
+		Math:            true,
+		PreviewFont:     "JetBrains Mono",
+		WindowWidth:     DefaultWindowWidth,
+		WindowHeight:    DefaultWindowHeight,
+		WindowMaximized: false,
+	}
 	if err := Save(want); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -217,5 +259,52 @@ func TestPath(t *testing.T) {
 	}
 	if got != p {
 		t.Fatalf("Path() = %q, want %q", got, p)
+	}
+}
+
+// TestWindowSettings verifies loading valid float64 window metrics and clamping/fallback.
+func TestWindowSettings(t *testing.T) {
+	p := withTempStore(t)
+	raw := map[string]any{
+		"windowWidth":     float64(1024),
+		"windowHeight":    float64(768),
+		"windowMaximized": true,
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	s, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if s.WindowWidth != 1024 || s.WindowHeight != 768 || !s.WindowMaximized {
+		t.Fatalf("unexpected window settings: got width=%d, height=%d, max=%v", s.WindowWidth, s.WindowHeight, s.WindowMaximized)
+	}
+
+	// Below minimum size falls back to default.
+	tooSmall := map[string]any{
+		"windowWidth":     float64(300),
+		"windowHeight":    float64(200),
+		"windowMaximized": false,
+	}
+	b, err = json.Marshal(tooSmall)
+	if err != nil {
+		t.Fatalf("marshal tooSmall: %v", err)
+	}
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatalf("write tooSmall: %v", err)
+	}
+
+	s, err = Load()
+	if err != nil {
+		t.Fatalf("load tooSmall: %v", err)
+	}
+	if s.WindowWidth != DefaultWindowWidth || s.WindowHeight != DefaultWindowHeight || s.WindowMaximized {
+		t.Fatalf("tooSmall should fall back to default: got width=%d, height=%d, max=%v", s.WindowWidth, s.WindowHeight, s.WindowMaximized)
 	}
 }
