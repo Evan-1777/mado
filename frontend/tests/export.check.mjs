@@ -128,12 +128,49 @@ const scenario = `<script>
 
     results.push({ name: 'modal-open-and-controls', ok: controlsOk });
 
-    // 2. Click export and verify successful PDF 1.4 generation
+    // 2. Click export, poll shell layout to verify zero CSS pollution, and verify successful PDF 1.4 generation
+    const getBodySnapshot = () => {
+      const cs = window.getComputedStyle(document.body);
+      return {
+        maxWidth: cs.maxWidth,
+        paddingTop: cs.paddingTop,
+        fontSize: cs.fontSize,
+        backgroundColor: cs.backgroundColor,
+      };
+    };
+    const bodyBefore = getBodySnapshot();
+    let shellPollutionDetected = false;
+    let pollCount = 0;
+    const pollTimer = setInterval(() => {
+      pollCount++;
+      const cur = getBodySnapshot();
+      if (
+        cur.maxWidth !== bodyBefore.maxWidth ||
+        cur.paddingTop !== bodyBefore.paddingTop ||
+        cur.fontSize !== bodyBefore.fontSize ||
+        cur.backgroundColor !== bodyBefore.backgroundColor
+      ) {
+        shellPollutionDetected = true;
+      }
+    }, 20);
+
     const submitBtn = exportDialog.querySelector('button[value="export"]');
     submitBtn.click();
 
     await waitFor(() => Boolean(state.savedBase64), 10000);
     await waitFor(() => !exportDialog.open, 5000);
+    clearInterval(pollTimer);
+
+    const bodyAfter = getBodySnapshot();
+    const shellUnpolluted =
+      !shellPollutionDetected &&
+      pollCount > 0 &&
+      bodyAfter.maxWidth === bodyBefore.maxWidth &&
+      bodyAfter.paddingTop === bodyBefore.paddingTop &&
+      bodyAfter.fontSize === bodyBefore.fontSize &&
+      bodyAfter.backgroundColor === bodyBefore.backgroundColor;
+
+    results.push({ name: 'shell-layout-unpolluted', ok: shellUnpolluted });
 
     const rawPdf = atob(state.savedBase64);
     const pdfValid =

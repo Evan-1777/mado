@@ -1,9 +1,9 @@
 /**
  * PDF Exporter module.
- * Injects complete Fluent 2 styles & KaTeX fonts, splits Markdown content into
- * pages with element-boundary avoidance, renders each page chunk to Canvas
- * independently to avoid Chromium 16384px hardware limits, and builds a standard
- * PDF 1.4 binary.
+ * Injects complete Fluent 2 styles & KaTeX fonts in an isolated offscreen iframe,
+ * splits Markdown content into pages with element-boundary avoidance, renders each
+ * page chunk to Canvas independently to avoid Chromium 16384px hardware limits,
+ * and builds a standard PDF 1.4 binary.
  */
 
 import html2canvas from 'html2canvas';
@@ -19,7 +19,12 @@ export interface ExportPdfOptions {
 // A4 proportions at 96 DPI: 210mm x 297mm ≈ 794px x 1123px (1 : 1.4142)
 const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
-const MAX_EXPORT_PAGES = 100;
+
+// Theme background & foreground colors aligned with design tokens
+const LIGHT_BG = '#ffffff';
+const DARK_BG = '#1f1f1f'; // aligned with tokens-dark.css --bg
+const LIGHT_FG = '#242424';
+const DARK_FG = '#ffffff';
 
 interface MarginSpec {
   top: number;
@@ -28,10 +33,11 @@ interface MarginSpec {
   right: number;
 }
 
+// Margins at 96 DPI (3.78 px/mm): 20mm ≈ 76px, 10mm ≈ 38px, 30mm ≈ 114px
 const MARGIN_SPECS: Record<'std' | 'compact' | 'wide', MarginSpec> = {
-  std: { top: 56, bottom: 56, left: 50, right: 50 },
-  compact: { top: 32, bottom: 32, left: 30, right: 30 },
-  wide: { top: 80, bottom: 80, left: 70, right: 70 },
+  std: { top: 76, bottom: 76, left: 76, right: 76 },
+  compact: { top: 38, bottom: 38, left: 38, right: 38 },
+  wide: { top: 114, bottom: 114, left: 114, right: 114 },
 };
 
 /**
@@ -87,36 +93,58 @@ export async function exportToPdfData(
   const contentWidth = A4_WIDTH_PX - marginSpec.left - marginSpec.right;
   const pageInnerHeight = A4_HEIGHT_PX - marginSpec.top - marginSpec.bottom;
   const isLight = options.theme === 'light';
+  const pageBg = isLight ? LIGHT_BG : DARK_BG;
+  const pageFg = isLight ? LIGHT_FG : DARK_FG;
 
-  // 1. Create hidden host container in main DOM (attached so CSS/fonts work reliably)
-  const host = document.createElement('div');
-  host.className = 'pdf-export-host';
-  host.style.cssText = `
+  // 1. Create isolated offscreen iframe so preview styles never leak to the main shell
+  const iframe = document.createElement('iframe');
+  iframe.className = 'pdf-export-iframe';
+  iframe.style.cssText = `
     position: fixed;
     left: 0;
     top: 0;
     width: ${A4_WIDTH_PX}px;
+    height: ${A4_HEIGHT_PX}px;
     z-index: -99999;
     opacity: 0;
     pointer-events: none;
-    overflow: hidden;
+    border: 0;
+    margin: 0;
+    padding: 0;
   `;
 
-  // Inject KaTeX stylesheet link & composed theme CSS
-  const katexLink = document.createElement('link');
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    iframe.remove();
+    throw new Error('Failed to access PDF export iframe document');
+  }
+
+  // Inject KaTeX stylesheet link & composed theme CSS into the isolated iframe document
+  const katexLink = doc.createElement('link');
   katexLink.rel = 'stylesheet';
   katexLink.href = './katex/katex.min.css';
 
-  const styleEl = document.createElement('style');
+  const styleEl = doc.createElement('style');
   styleEl.textContent = `
     ${baseThemeCss}
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      max-width: none !important;
+      width: ${contentWidth}px !important;
+      background: ${pageBg} !important;
+      color: ${pageFg} !important;
+      overflow: hidden !important;
+    }
     .pdf-export-wrapper {
       box-sizing: border-box;
       width: ${contentWidth}px;
       margin: 0;
       padding: 0;
-      background: ${isLight ? '#ffffff' : 'var(--bg, #202020)'};
-      color: ${isLight ? '#242424' : 'var(--fg, #ffffff)'};
+      background: ${pageBg};
+      color: ${pageFg};
     }
     .pdf-export-wrapper article#md-content {
       box-sizing: border-box;
@@ -135,32 +163,30 @@ export async function exportToPdfData(
     }
   `;
 
-  // Wrapper for content
-  const wrapper = document.createElement('div');
+  // Wrapper for content inside iframe
+  const wrapper = doc.createElement('div');
   wrapper.className = 'pdf-export-wrapper';
 
-  const article = document.createElement('article');
+  const article = doc.createElement('article');
   article.id = 'md-content';
   article.innerHTML = html;
 
   wrapper.appendChild(article);
-  host.appendChild(katexLink);
-  host.appendChild(styleEl);
-  host.appendChild(wrapper);
-
-  document.body.appendChild(host);
+  doc.head.appendChild(katexLink);
+  doc.head.appendChild(styleEl);
+  doc.body.appendChild(wrapper);
 
   try {
-    // 2. Wait for KaTeX stylesheet, render math & wait for web fonts
+    // 2. Wait for KaTeX stylesheet, render math & wait for web fonts inside iframe
     await waitForLink(katexLink);
 
     if (options.renderMath) {
       options.renderMath(article);
     }
 
-    if ('fonts' in document && document.fonts && 'ready' in document.fonts) {
+    if ('fonts' in doc && doc.fonts && 'ready' in doc.fonts) {
       await Promise.race([
-        document.fonts.ready,
+        doc.fonts.ready,
         new Promise((resolve) => setTimeout(resolve, 500)),
       ]);
     }
@@ -212,28 +238,23 @@ export async function exportToPdfData(
       pageRanges.push({ startY: 0, endY: Math.max(totalHeight, 1) });
     }
 
-    // Guard against runaway page creation
-    if (pageRanges.length > MAX_EXPORT_PAGES) {
-      pageRanges.length = MAX_EXPORT_PAGES;
-    }
-
     // 4. Capture each page window independently to avoid Chromium 16384px limit
     const pageImages: PdfPageImage[] = [];
     const captureScale = 2; // 2x DPI for crisp rendering
 
-    // Dedicated viewport box for clipping one page at a time
-    const viewportBox = document.createElement('div');
+    // Dedicated viewport box for clipping one page at a time inside iframe
+    const viewportBox = doc.createElement('div');
     viewportBox.style.cssText = `
       position: relative;
       width: ${contentWidth}px;
       overflow: hidden;
-      background: ${isLight ? '#ffffff' : 'var(--bg, #202020)'};
+      background: ${pageBg};
     `;
 
     // Move wrapper inside viewportBox
-    host.removeChild(wrapper);
+    doc.body.removeChild(wrapper);
     viewportBox.appendChild(wrapper);
-    host.appendChild(viewportBox);
+    doc.body.appendChild(viewportBox);
 
     for (let i = 0; i < pageRanges.length; i++) {
       const range = pageRanges[i];
@@ -246,13 +267,12 @@ export async function exportToPdfData(
       wrapper.style.position = 'relative';
       wrapper.style.top = `-${range.startY}px`;
 
-      // Render the current slice to Canvas (ignore editor #app & dialogs to avoid full document cloning)
+      // Render the current slice to Canvas (isolated inside iframe, zero main DOM clone overhead)
       const sliceCanvas = await html2canvas(viewportBox, {
-        backgroundColor: isLight ? '#ffffff' : '#202020',
+        backgroundColor: pageBg,
         scale: captureScale,
         useCORS: true,
         logging: false,
-        ignoreElements: (el) => el.id === 'app' || el.tagName === 'DIALOG',
       });
 
       // Composite onto full A4 Canvas with reconstructed margins
@@ -262,7 +282,7 @@ export async function exportToPdfData(
 
       const ctx = a4Canvas.getContext('2d');
       if (ctx) {
-        ctx.fillStyle = isLight ? '#ffffff' : '#202020';
+        ctx.fillStyle = pageBg;
         ctx.fillRect(0, 0, a4Canvas.width, a4Canvas.height);
         ctx.drawImage(
           sliceCanvas,
@@ -292,9 +312,9 @@ export async function exportToPdfData(
 
     return base64Data;
   } finally {
-    // Thorough cleanup of temporary elements
-    if (host.parentNode) {
-      host.parentNode.removeChild(host);
+    // Thorough cleanup of offscreen iframe
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
     }
   }
 }

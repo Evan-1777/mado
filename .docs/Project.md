@@ -68,7 +68,7 @@ mado/
   - **聚焦目录与双向跳转**：成功渲染后前端从 Markdown ATX 解析大纲树，支持 Flat 结构与六级颜色令牌折叠展开；行号栏由 Go ASTTransformer 在顶层块写入 `data-line`，预览 CSS `content: attr(data-line)` 自动跟随排版渲染；Editor 行号槽点击二分定位对应块并平滑置顶，Preview 行号栏点击按坐标换算行号并在编辑器内平滑滚动置顶。
   - **窗口全向缩放与状态记忆**：顶层 Fixed Overlay 8 方向透明把手响应 mousedown 发送原生 resize 指令，绕过滚动条阻断；前端监听窗口尺寸变化，250ms 尾随防抖写入尺寸并分离记录最大化状态，退出前通过 `flushWindowState` 强制刷盘。
   - **保存与关闭确认**：保存时写入同目录临时文件、继承原权限、`Sync()` 刷盘后原子 `Rename` 替换；退出或新建未保存文件时，前端弹原生 `<dialog>` 三态模态确认，关闭确认由前端接管后调用 `ForceQuit`。
-  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（浅色/当前主题、标准/紧凑/宽松边距，依 YAGNI 退役未证实且与 html2canvas 冲突的缩放步进）→ 点击「导出」呈现加载禁用态与实时分块进度反馈 → 前端显式拉取目标主题完整 CSS（`GetThemeCSS(exportTheme)`）与 KaTeX 样式，等待 link load 事件与公式回填，确保 `@font-face` 与 `document.fonts.ready` 真实就绪 → 按 A4 几何比例与子元素下沿软断页逐页分块绘制至独立 Canvas（html2canvas 配置 `ignoreElements` 阻断对 `#app` 与对话框的递归整树克隆，规避 O(pages × document) 卡死风险，单页捕获彻底规避 Chromium 16384px 硬件上限）并重建统一内页边距（上限 100 页） → 纯 TypeScript 自研轻量 PDF 1.4 包装器将多页编码为标准 PDF 二进制并转为 Base64 → 调用 Wails 原生 `SavePdfFileDialog`（契约对齐 `(string, error)`，区分用户取消与宿主异常）调起系统另存为对话框 → 确认后经 `SavePdfFile` 与 `filesys.WriteFile` 完成短写保护原子落盘，成功后更新状态栏，取消静默复位，异常提示「导出失败」。
+  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（浅色/当前主题、标准/紧凑/宽松边距，依 YAGNI 退役未证实且与 html2canvas 冲突的缩放步进）→ 点击「导出」呈现加载禁用态与实时分块进度反馈 → 前端显式拉取目标主题完整 CSS（`GetThemeCSS(exportTheme)`）并在离屏隔离 iframe 容器内注入 KaTeX 样式与主题样式，等待 link load 事件与公式回填，确保 `@font-face` 与 `iframe.contentDocument.fonts.ready` 真实就绪且彻底杜绝外壳样式污染 → 按 A4 几何比例与子元素下沿软断页逐页分块绘制至独立 Canvas（单页捕获彻底规避 Chromium 16384px 硬件上限）并重建统一内页边距（标准 20mm/76px、紧凑 10mm/38px、宽松 30mm/114px，深色底色对齐 #1f1f1f） → 纯 TypeScript 自研轻量 PDF 1.4 包装器将多页编码为标准 PDF 二进制并转为 Base64 → 调用 Wails 原生 `SavePdfFileDialog`（契约对齐 `(string, error)`，区分用户取消与宿主异常）调起系统另存为对话框 → 确认后经 `SavePdfFile` 与 `filesys.WriteFile` 完成短写保护原子落盘，成功后更新状态栏，取消静默复位，异常提示「导出失败」。
 - **依赖方向**：`internal/*` 禁止相互依赖（filesys 与 settings 仅通过共享 JSON 文件松耦合）；`main.go` 与 `app.go` 是唯一允许引用 internal 的外层包；前端仅通过 `frontend/wailsjs/` 生成的绑定与后端通信，禁止直调原生 API；`mdrender`、`theme`、`filesys`、`settings` 为纯 Go 包，测试不依赖 GUI。
 
 ## 约定
@@ -148,8 +148,11 @@ mado/
 - 依据 YAGNI 与最短有效差分退役导出缩放步进控件——html2canvas 白名单不含 zoom 导致放大时右侧被 viewportBox 裁切且测量坐标与捕获坐标断裂；恒定以 100% 真实 A4 物理比例输出消除过度承诺与几何错位
 - 导出主题样式经 GetThemeCSS(themeName) 显式按需拉取——GetCSS() 恒按当前应用主题输出，暗色主题下导出浅色若仅覆盖 wrapper 背景会导致代码块/标题等 CSS 变量仍为暗色；显式拉取使目标主题 tokens 与 base 样式完全匹配
 - KaTeX 样式表 link 必须显式 await load 事件后再等待字体就绪——document.fonts.ready 仅等待已被布局引用的字体，外部 link 未解析完成时 KaTeX @font-face 尚未进入字体表会导致字体等待空转并降级为回退字体渲染
-- html2canvas 捕获必须忽略 #app 与 dialog 节点——html2canvas 内部克隆从 documentElement 开始，长文档循环分页会导致 O(pages × document) 的重排开销；ignoreElements 过滤无关大型 DOM 消除卡顿
-- 导出核心链路通过 dev-only 无头 Chrome 冒烟用例（export.check.mjs）自动化闭环——在 Linux 开发环境无需 GUI 即可验证弹窗唤起、主题拉取、Base64 PDF 1.4 二进制头/尾结构、用户取消与异常处理
+- 采用离屏隔离 iframe 容器构建导出文档以彻底杜绝样式泄漏至外壳——预览全局样式表注入主文档会导致外壳 body 被强加 36px/64px 内边距并产生 max-width 压窄；离屏 iframe 形成原生物理样式隔离边界，同时使 html2canvas 仅克隆 iframe 内部文档，兼具零外壳重排开销与绝对样式隔离
+- PDF 导出页边距按 96 DPI（3.78 px/mm）严格对齐标准 20mm (76px) / 紧凑 10mm (38px) / 宽松 30mm (114px)，深色底色收敛为 #1f1f1f——消除界面文案与实际像素的换算偏差，并彻底消除深色模式下分块内容与 A4 画布底色的接缝
+- 移除 100 页静默截断过度防御——分块循环严格单调递增，无死循环风险；静默截断会无提示丢弃长文档内容，属于不当防御
+- 收窄 .gitignore 规则至 .codebuddy/*.local.json——确保仓库跟踪的 .codebuddy/agents/* 与 .codebuddy/skills/* 正常纳管与版本追踪，仅忽略本地工作区生成的动态配置
+- 导出核心链路通过 dev-only 无头 Chrome 冒烟用例（export.check.mjs）自动化闭环——在 Linux 开发环境无需 GUI 即可验证弹窗唤起、主题拉取、外壳零污染断言、Base64 PDF 1.4 二进制头/尾结构、用户取消与异常处理
 
 ## 术语
 
