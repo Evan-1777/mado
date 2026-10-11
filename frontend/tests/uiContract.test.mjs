@@ -176,6 +176,10 @@ for (const selector of [
   '.settings-close-btn',
   '.settings-text-input',
   '.theme-segmented button',
+  '.export-close-btn',
+  '#export-step-minus',
+  '#export-step-plus',
+  '.export-segmented button',
 ]) {
   if (!new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:focus-visible[^{]*\\{[^}]*outline:[^;]*var\\(--focus-ring\\)`).test(css)) {
     fail(`focus: ${selector} missing outline with var(--focus-ring)`);
@@ -204,20 +208,29 @@ hasRule(baseCss, '.md-line:focus-within .copy-code-btn', 'opacity: 1', 'copy but
 hasRule(baseCss, '.copy-code-btn.copied', 'border-color: var(--accent)', 'copy success feedback');
 has(html, 'id="close-dialog"', 'close dialog');
 has(html, 'id="settings-dialog"', 'settings dialog');
+has(html, 'id="export-dialog"', 'export dialog');
 has(html, 'aria-labelledby="close-dialog-title"', 'close dialog title link');
 has(html, 'aria-labelledby="settings-dialog-title"', 'settings dialog title link');
+has(html, 'aria-labelledby="export-dialog-title"', 'export dialog title link');
 has(html, 'method="dialog"', 'native dialog form');
-for (const value of ['value="cancel"', 'value="no"', 'value="yes"']) {
+for (const value of ['value="cancel"', 'value="no"', 'value="yes"', 'value="export"']) {
   has(html, value, 'dialog submitter value');
 }
-for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', 'set-preview-font']) {
-  has(html, `id="${id}"`, 'settings control');
+for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', 'set-preview-font', 'export-scale-input', 'export-theme-seg', 'export-margin-seg']) {
+  has(html, `id="${id}"`, 'settings or export control');
 }
 has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
 has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
 has(html, 'src="./app.js"', 'bundle asset path');
+
+// ---- print styles ----
+has(baseCss, '@media print', 'print media query');
+hasRule(baseCss, 'body.md-gutter #md-content > [data-line]::before', 'display: none !important', 'print gutter hiding');
+hasRule(baseCss, '.copy-code-btn', 'display: none !important', 'print copy button hiding');
+hasRule(baseCss, 'body', 'zoom: var(--print-scale, 1)', 'print scale zoom');
+
 
 // ---- shell markup built in TS ----
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
@@ -256,10 +269,10 @@ has(ts, "if (dirty === v) return; // edge-triggered: only notify Go on transitio
 has(ts, 'direction * 16', 'toc keyboard step');
 if (!/setAttribute\('aria-label'/.test(ts)) fail('toc aria-label is never updated');
 
-const actionOrder = ['btn-new', 'btn-open', 'btn-theme', 'btn-save', 'btn-settings'];
+const actionOrder = ['btn-new', 'btn-open', 'btn-theme', 'btn-save', 'btn-export', 'btn-settings'];
 const actionPositions = actionOrder.map((id) => ts.indexOf(`id="${id}"`));
 if (actionPositions.some((position, index) => position < 0 || (index > 0 && position <= actionPositions[index - 1]))) {
-  fail('titlebar actions: expected new, open, theme, save, settings order');
+  fail('titlebar actions: expected new, open, theme, save, export, settings order');
 }
 for (const state of ['stealth', 'unsaved', 'error']) {
   has(ts, `classList.${state === 'stealth' ? 'add' : 'toggle'}`, `status state ${state}`);

@@ -93,6 +93,7 @@ const scenario = `<script>
       const view = document.querySelector('.cm-content')?.cmTile?.root?.view;
       if (!view) throw new Error('cannot reach the CodeMirror view');
       view.dispatch({ selection: { anchor: view.state.doc.line(400).from }, scrollIntoView: true });
+      if (typeof view.measure === 'function') view.measure();
       for (let i = 0; i < 40 && scroller.scrollTop === 0; i++) await wait(25);
       const before = scroller.scrollTop;
       document.querySelector('[data-mode="preview"]').click();

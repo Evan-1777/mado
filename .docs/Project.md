@@ -5,8 +5,8 @@
 ## 概述
 
 - **定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **阶段**：开发中（支持窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；Windows 原生交互待手动验收）
-- **非目标**：多标签页、插件系统、导出 HTML/PDF、Mermaid 图表（详见 `SCOPE.md` 设计原则）
+- **阶段**：开发中（支持文档导出为 PDF（方案 B：缩放与多维版面控制）、窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；Windows 原生打印与交互待手动验收）
+- **非目标**：多标签页、插件系统、导出独立 HTML、Mermaid 图表（详见 `SCOPE.md` 设计原则）
 
 ## 环境与运行
 
@@ -66,6 +66,7 @@ mado/
   - **聚焦目录与双向跳转**：成功渲染后前端从 Markdown ATX 解析大纲树，支持 Flat 结构与六级颜色令牌折叠展开；行号栏由 Go ASTTransformer 在顶层块写入 `data-line`，预览 CSS `content: attr(data-line)` 自动跟随排版渲染；Editor 行号槽点击二分定位对应块并平滑置顶，Preview 行号栏点击按坐标换算行号并在编辑器内平滑滚动置顶。
   - **窗口全向缩放与状态记忆**：顶层 Fixed Overlay 8 方向透明把手响应 mousedown 发送原生 resize 指令，绕过滚动条阻断；前端监听窗口尺寸变化，250ms 尾随防抖写入尺寸并分离记录最大化状态，退出前通过 `flushWindowState` 强制刷盘。
   - **保存与关闭确认**：保存时写入同目录临时文件、继承原权限、`Sync()` 刷盘后原子 `Rename` 替换；退出或新建未保存文件时，前端弹原生 `<dialog>` 三态模态确认，关闭确认由前端接管后调用 `ForceQuit`。
+  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（50%~200% 缩放步进、浅色/当前主题、标准/紧凑/宽松边距）→ 点击导出触发离屏可渲染 iframe 管道（position: fixed 且 left: -10000px，绝非 display:none）→ 注入包含单一变量 --print-scale 与 --print-margin 的骨架文档与样式 → 严格等待 iframe load、KaTeX 公式回填与 document.fonts.ready 就绪 → 调用 printWindow.print() 唤出系统原生打印引擎 → 打印完成或兜底定时器自动从父 DOM 移除清理节点，全程零污染主预览视口滚动与编辑状态。
 - **依赖方向**：`internal/*` 禁止相互依赖（filesys 与 settings 仅通过共享 JSON 文件松耦合）；`main.go` 与 `app.go` 是唯一允许引用 internal 的外层包；前端仅通过 `frontend/wailsjs/` 生成的绑定与后端通信，禁止直调原生 API；`mdrender`、`theme`、`filesys`、`settings` 为纯 Go 包，测试不依赖 GUI。
 
 ## 约定
@@ -136,6 +137,10 @@ mado/
 - KaTeX 构建产物仅分发 woff2 字体——WebView2/Chromium 原生支持 woff2，清理 ttf/woff 显著缩减二进制嵌入体积
 - lastfile 记录保持为只写不读——当前无启动恢复会话需求，保留只写记录为将来扩展预留数据
 - Windows 文件权限仅区分只读（0444）与可写（0666），且 MoveFileExW 不支持多线程向同一目标并发替换——并发测试必须为各 worker 分配独立保存路径以隔离目标锁定冲突
+- 导出 PDF 采用专用离屏可渲染 iframe（position: fixed 且 left: -10000px）而非 display:none 或主预览 iframe——Chromium 在 display:none 下打印输出空白，主预览 iframe 存在沙箱限制且在编辑模式下为隐藏态；离屏节点独立渲染彻底避免污染主工作区滚动偏移与编辑状态
+- 打印排版以 CSS 变量 --print-scale 为单一缩放数据源，base.css 中消费 zoom: var(--print-scale, 1)——消除多套 zoom 叠加冲突，外部容器仅注入变量
+- 打印就绪建立串行检测契约（load → KaTeX 回填 → document.fonts.ready 配合 300ms 兜底 → print）——严格防止 woff2 异步字体与外部样式尚未栅格化完成即触发打印导致公式乱码或排版跳动
+- 导出 PDF 本地验证由 uiContract 与无头用例锁定 DOM/CSS/时序契约，物理矢量 PDF 与排版缩放由 Windows 端手动验收——Linux 开发环境无系统打印假脱机与 WebView2 驱动，分工明确保持本地验证最小占用
 
 ## 术语
 

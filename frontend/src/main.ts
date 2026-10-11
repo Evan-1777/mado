@@ -91,6 +91,11 @@ const GLYPH_THEME = `<svg width="15" height="15" viewBox="0 0 16 16" fill="curre
   <path d="M8 1.25a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5zm0 1.25v11A5.5 5.5 0 0 1 8 2.5z"/>
 </svg>`;
 
+const GLYPH_EXPORT = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35">
+  <path d="M9 1.5H3.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6L9 1.5z"/>
+  <path d="M9 1.5V6h4.5"/><path d="M5.5 10.5h5"/><path d="M8 8v5"/><path d="M10 11.5l-2 2-2-2"/>
+</svg>`;
+
 const GLYPH_SETTINGS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="12" cy="12" r="3"/>
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -113,6 +118,7 @@ titlebar.innerHTML = `
     <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件">${GLYPH_OPEN}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
     <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
+    <button class="icon-btn" id="btn-export" title="导出为 PDF (Ctrl+P)" aria-label="导出为 PDF">${GLYPH_EXPORT}</button>
     <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
@@ -395,6 +401,39 @@ const setWrapInput = document.getElementById('set-wrap') as HTMLInputElement | n
 const setMathInput = document.getElementById('set-math') as HTMLInputElement | null;
 const setPreviewFontInput = document.getElementById('set-preview-font') as HTMLInputElement | null;
 
+// ---------------------------------------------------------------- export PDF
+const exportDialog = document.getElementById('export-dialog') as HTMLDialogElement | null;
+const exportForm = exportDialog?.querySelector('form.export-form') as HTMLFormElement | null;
+const exportStepMinusBtn = document.getElementById('export-step-minus') as HTMLButtonElement | null;
+const exportStepPlusBtn = document.getElementById('export-step-plus') as HTMLButtonElement | null;
+const exportScaleInput = document.getElementById('export-scale-input') as HTMLInputElement | null;
+const exportThemeSeg = document.getElementById('export-theme-seg');
+const exportMarginSeg = document.getElementById('export-margin-seg');
+
+let exportScale = 100;
+let exportTheme: 'light' | 'current' = 'light';
+let exportMargin: 'std' | 'compact' | 'wide' = 'std';
+
+const MARGIN_MAP: Record<string, string> = {
+  std: '20mm',
+  compact: '10mm',
+  wide: '30mm',
+};
+
+function setExportScale(val: number) {
+  exportScale = Math.max(50, Math.min(200, Math.round(val)));
+  if (exportScaleInput) {
+    exportScaleInput.value = `${exportScale}%`;
+  }
+}
+
+function openExportModal() {
+  if (!exportDialog) return;
+  exportDialog.returnValue = '';
+  exportDialog.showModal();
+}
+
+
 // Preview font: the persisted value is the single source of truth. The input
 // side keeps the last validated font so a failed SetPreviewFont can restore
 // the input to it instead of leaving a stale value.
@@ -514,6 +553,8 @@ const editorState = EditorState.create({
       { key: 'Ctrl-s', run: () => { void saveCurrent(); return true; } },
       { key: 'Ctrl-o', run: () => { void openFile(); return true; } },
       { key: 'Ctrl-n', run: () => { void newFile(); return true; } },
+      { key: 'Ctrl-p', run: () => { openExportModal(); return true; } },
+      { key: 'Ctrl-Shift-e', run: () => { openExportModal(); return true; } },
       { key: 'Ctrl-Shift-p', run: () => { void openFile(); return true; } },
     ]),
     EditorView.updateListener.of((update) => {
@@ -1145,6 +1186,166 @@ settingsDialog?.addEventListener('click', (e) => {
   );
   if (!isInDialog) {
     settingsDialog.close();
+  }
+});
+
+// ---------------------------------------------------------------- export PDF pipeline
+
+async function runExport() {
+  const md = cm.state.doc.toString();
+  try {
+    const [html, baseThemeCss] = await Promise.all([Render(md), cssForTheme()]);
+    const margin = MARGIN_MAP[exportMargin] || '20mm';
+    const scaleRatio = exportScale / 100;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position: fixed; left: -10000px; top: -10000px; width: 1024px; height: 768px; border: 0;';
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.tabIndex = -1;
+
+    const printSkeleton = `<!DOCTYPE html>
+<html lang="zh-CN"${exportTheme === 'current' ? ' data-print-theme="current"' : ''}>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="./katex/katex.min.css"/>
+<style>
+:root {
+  --print-scale: ${scaleRatio};
+  --print-margin: ${margin};
+}
+${baseThemeCss}
+</style>
+</head>
+<body>
+<article id="md-content">${html}</article>
+</body>
+</html>`;
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    const loadPromise = new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+      iframe.onload = done;
+      setTimeout(done, 1000);
+    });
+
+    document.body.appendChild(iframe);
+    iframe.srcdoc = printSkeleton;
+
+    await loadPromise;
+
+    const printDoc = iframe.contentDocument;
+    const printWin = iframe.contentWindow;
+
+    if (printDoc) {
+      renderMathInFrame(printDoc);
+      if ('fonts' in printDoc && printDoc.fonts && 'ready' in printDoc.fonts) {
+        await Promise.race([
+          printDoc.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 300)),
+        ]);
+      }
+    }
+
+    if (printWin) {
+      printWin.onafterprint = cleanup;
+      printWin.focus();
+      printWin.print();
+    }
+    setTimeout(cleanup, 1000);
+  } catch (err) {
+    console.error('runExport failed', err);
+    statusEl.textContent = '导出失败';
+    statusContainer.classList.add('error');
+    statusContainer.classList.remove('stealth', 'unsaved');
+  }
+}
+
+document.getElementById('btn-export')?.addEventListener('click', () => {
+  openExportModal();
+});
+
+exportDialog?.addEventListener('click', (e) => {
+  const rect = exportDialog.getBoundingClientRect();
+  const isInDialog = (
+    rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+    rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+  );
+  if (!isInDialog) {
+    exportDialog.close();
+  }
+});
+
+exportStepMinusBtn?.addEventListener('click', () => {
+  setExportScale(exportScale - 10);
+});
+
+exportStepPlusBtn?.addEventListener('click', () => {
+  setExportScale(exportScale + 10);
+});
+
+exportScaleInput?.addEventListener('change', () => {
+  const raw = parseInt(exportScaleInput.value.replace(/[^0-9]/g, ''), 10);
+  if (!isNaN(raw)) {
+    setExportScale(raw);
+  } else {
+    setExportScale(exportScale);
+  }
+});
+
+exportScaleInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    exportScaleInput.blur();
+  }
+});
+
+exportThemeSeg?.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    exportThemeSeg.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const theme = btn.getAttribute('data-theme');
+    exportTheme = theme === 'current' ? 'current' : 'light';
+  });
+});
+
+exportMarginSeg?.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    exportMarginSeg.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const margin = btn.getAttribute('data-margin');
+    exportMargin = (margin === 'compact' || margin === 'wide') ? margin : 'std';
+  });
+});
+
+exportForm?.addEventListener('submit', (event) => {
+  const submitter = (event as SubmitEvent).submitter;
+  const value = submitter?.getAttribute('value');
+  if (value === 'export') {
+    void runExport();
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+    e.preventDefault();
+    openExportModal();
+  } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+    e.preventDefault();
+    openExportModal();
   }
 });
 
