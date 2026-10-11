@@ -239,7 +239,7 @@ hasRule(baseCss, 'body', 'zoom: var(--print-scale, 1)', 'print scale zoom');
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
-has(ts, "iframe.setAttribute('sandbox', 'allow-same-origin')", 'export iframe sandbox');
+has(ts, "iframe.setAttribute('sandbox', 'allow-same-origin allow-modals')", 'export iframe sandbox');
 has(ts, "b.setAttribute('aria-pressed', 'false')", 'export segmented aria-pressed reset');
 has(ts, "btn.setAttribute('aria-pressed', 'true')", 'export segmented aria-pressed set');
 for (const [mode, label] of [['editor', '编辑'], ['preview', '预览'], ['split', '分栏']]) {

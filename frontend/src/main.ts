@@ -1201,7 +1201,7 @@ async function runExport() {
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position: fixed; left: -10000px; top: -10000px; width: 1024px; height: 768px; border: 0;';
     iframe.setAttribute('aria-hidden', 'true');
-    iframe.setAttribute('sandbox', 'allow-same-origin');
+    iframe.setAttribute('sandbox', 'allow-same-origin allow-modals');
     iframe.tabIndex = -1;
 
     const printSkeleton = `<!DOCTYPE html>
