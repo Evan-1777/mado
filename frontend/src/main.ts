@@ -1201,6 +1201,7 @@ async function runExport() {
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position: fixed; left: -10000px; top: -10000px; width: 1024px; height: 768px; border: 0;';
     iframe.setAttribute('aria-hidden', 'true');
+    iframe.setAttribute('sandbox', 'allow-same-origin');
     iframe.tabIndex = -1;
 
     const printSkeleton = `<!DOCTYPE html>
@@ -1260,12 +1261,17 @@ ${baseThemeCss}
       }
     }
 
-    if (printWin) {
-      printWin.onafterprint = cleanup;
-      printWin.focus();
-      printWin.print();
+    try {
+      if (printWin) {
+        printWin.onafterprint = cleanup;
+        printWin.focus();
+        printWin.print();
+      }
+      setTimeout(cleanup, 1000);
+    } catch (printErr) {
+      cleanup();
+      throw printErr;
     }
-    setTimeout(cleanup, 1000);
   } catch (err) {
     console.error('runExport failed', err);
     statusEl.textContent = '导出失败';
@@ -1315,8 +1321,12 @@ exportScaleInput?.addEventListener('keydown', (e) => {
 
 exportThemeSeg?.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
   btn.addEventListener('click', () => {
-    exportThemeSeg.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+    exportThemeSeg.querySelectorAll('button').forEach((b) => {
+      b.classList.remove('active');
+      b.setAttribute('aria-pressed', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-pressed', 'true');
     const theme = btn.getAttribute('data-theme');
     exportTheme = theme === 'current' ? 'current' : 'light';
   });
@@ -1324,8 +1334,12 @@ exportThemeSeg?.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
 
 exportMarginSeg?.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
   btn.addEventListener('click', () => {
-    exportMarginSeg.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+    exportMarginSeg.querySelectorAll('button').forEach((b) => {
+      b.classList.remove('active');
+      b.setAttribute('aria-pressed', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-pressed', 'true');
     const margin = btn.getAttribute('data-margin');
     exportMargin = (margin === 'compact' || margin === 'wide') ? margin : 'std';
   });

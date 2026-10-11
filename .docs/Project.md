@@ -137,7 +137,7 @@ mado/
 - KaTeX 构建产物仅分发 woff2 字体——WebView2/Chromium 原生支持 woff2，清理 ttf/woff 显著缩减二进制嵌入体积
 - lastfile 记录保持为只写不读——当前无启动恢复会话需求，保留只写记录为将来扩展预留数据
 - Windows 文件权限仅区分只读（0444）与可写（0666），且 MoveFileExW 不支持多线程向同一目标并发替换——并发测试必须为各 worker 分配独立保存路径以隔离目标锁定冲突
-- 导出 PDF 采用专用离屏可渲染 iframe（position: fixed 且 left: -10000px）而非 display:none 或主预览 iframe——Chromium 在 display:none 下打印输出空白，主预览 iframe 存在沙箱限制且在编辑模式下为隐藏态；离屏节点独立渲染彻底避免污染主工作区滚动偏移与编辑状态
+- 导出 PDF 采用专用离屏可渲染 iframe（position: fixed 且 left: -10000px，带 sandbox="allow-same-origin" 沙箱隔离）而非 display:none 或主预览 iframe——Chromium 在 display:none 下打印输出空白，主预览 iframe 在编辑模式下为隐藏态；离屏节点独立渲染彻底避免污染主工作区滚动偏移与编辑状态，显式沙箱严格阻断文档内联 on* 脚本在同源帧中执行，打印调用附带同步异常立即清理与兜底定时器双重保障
 - 打印排版以 CSS 变量 --print-scale 为单一缩放数据源，base.css 中消费 zoom: var(--print-scale, 1)——消除多套 zoom 叠加冲突，外部容器仅注入变量
 - 打印就绪建立串行检测契约（load → KaTeX 回填 → document.fonts.ready 配合 300ms 兜底 → print）——严格防止 woff2 异步字体与外部样式尚未栅格化完成即触发打印导致公式乱码或排版跳动
 - 导出 PDF 本地验证由 uiContract 与无头用例锁定 DOM/CSS/时序契约，物理矢量 PDF 与排版缩放由 Windows 端手动验收——Linux 开发环境无系统打印假脱机与 WebView2 驱动，分工明确保持本地验证最小占用

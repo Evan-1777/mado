@@ -115,8 +115,8 @@
                     </div>
                     <div class="export-control">
                         <div class="export-segmented" id="export-theme-seg">
-                            <button type="button" class="active" data-theme="light">浅色 (推荐打印)</button>
-                            <button type="button" data-theme="current">当前主题</button>
+                            <button type="button" class="active" aria-pressed="true" data-theme="light">浅色 (推荐打印)</button>
+                            <button type="button" aria-pressed="false" data-theme="current">当前主题</button>
                         </div>
                     </div>
                 </div>
@@ -127,21 +127,10 @@
                     </div>
                     <div class="export-control">
                         <div class="export-segmented" id="export-margin-seg">
-                            <button type="button" class="active" data-margin="std">标准 (20mm)</button>
-                            <button type="button" data-margin="compact">紧凑 (10mm)</button>
-                            <button type="button" data-margin="wide">宽松 (30mm)</button>
+                            <button type="button" class="active" aria-pressed="true" data-margin="std">标准 (20mm)</button>
+                            <button type="button" aria-pressed="false" data-margin="compact">紧凑 (10mm)</button>
+                            <button type="button" aria-pressed="false" data-margin="wide">宽松 (30mm)</button>
                         </div>
-                    </div>
-                </div>
-                <div class="sheet-preview-card">
-                    <div class="mini-sheet">
-                        <div class="mini-line title"></div>
-                        <div class="mini-line" style="width: 80%"></div>
-                        <div class="mini-line" style="width: 90%"></div>
-                        <div class="mini-line" style="width: 50%"></div>
-                    </div>
-                    <div class="mini-desc">
-                        页面将输出为矢量 PDF 文档，支持系统打印对话框中自定义打印机与另存为 PDF。
                     </div>
                 </div>
             </div>

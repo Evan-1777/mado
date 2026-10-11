@@ -219,6 +219,10 @@ for (const value of ['value="cancel"', 'value="no"', 'value="yes"', 'value="expo
 for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', 'set-preview-font', 'export-scale-input', 'export-theme-seg', 'export-margin-seg']) {
   has(html, `id="${id}"`, 'settings or export control');
 }
+has(html, 'aria-pressed="true"', 'segmented active pressed state');
+has(html, 'aria-pressed="false"', 'segmented inactive pressed state');
+hasNot(html, 'sheet-preview-card', 'decorative sheet card retired from html');
+hasNot(css, 'sheet-preview-card', 'decorative sheet card retired from css');
 has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
 has(html, 'data-theme="dark"', 'root default theme');
@@ -231,11 +235,13 @@ hasRule(baseCss, 'body.md-gutter #md-content > [data-line]::before', 'display: n
 hasRule(baseCss, '.copy-code-btn', 'display: none !important', 'print copy button hiding');
 hasRule(baseCss, 'body', 'zoom: var(--print-scale, 1)', 'print scale zoom');
 
-
 // ---- shell markup built in TS ----
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
+has(ts, "iframe.setAttribute('sandbox', 'allow-same-origin')", 'export iframe sandbox');
+has(ts, "b.setAttribute('aria-pressed', 'false')", 'export segmented aria-pressed reset');
+has(ts, "btn.setAttribute('aria-pressed', 'true')", 'export segmented aria-pressed set');
 for (const [mode, label] of [['editor', '编辑'], ['preview', '预览'], ['split', '分栏']]) {
   if (!new RegExp(`data-mode="${mode}"[^>]*aria-selected="(?:true|false)"[^>]*>${label}<`).test(ts)) {
     fail(`mode tab ${mode}: missing Chinese label "${label}" with aria-selected`);
