@@ -6,6 +6,8 @@ export function ForceQuit():Promise<void>;
 
 export function GetCSS():Promise<string>;
 
+export function GetThemeCSS(arg1:string):Promise<string>;
+
 export function GetSettings():Promise<settings.Settings>;
 
 export function GetStartupFile():Promise<string>;

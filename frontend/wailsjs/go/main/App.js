@@ -10,6 +10,10 @@ export function GetCSS() {
   return window['go']['main']['App']['GetCSS']();
 }
 
+export function GetThemeCSS(arg1) {
+  return window['go']['main']['App']['GetThemeCSS'](arg1);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

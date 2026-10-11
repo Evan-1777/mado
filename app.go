@@ -29,6 +29,8 @@ type App struct {
 	saveSettings func(settings.Settings) error
 	// setLastFile records the last path. Tests override it to inject a failure.
 	setLastFile func(string) error
+	// saveFileDialog opens the native save dialog. Tests override it to avoid Wails context dependency.
+	saveFileDialog func(context.Context, runtime.SaveDialogOptions) (string, error)
 	dirty       bool
 	quitting    bool
 	startupFile string
@@ -124,6 +126,14 @@ func (a *App) Render(md string) (string, error) {
 func (a *App) GetCSS() (string, error) {
 	a.mu.RLock()
 	themeName := a.settings.Theme
+	a.mu.RUnlock()
+	return a.GetThemeCSS(themeName)
+}
+
+// GetThemeCSS returns the composed preview stylesheet for the requested theme
+// and active preview font.
+func (a *App) GetThemeCSS(themeName string) (string, error) {
+	a.mu.RLock()
 	font := a.settings.PreviewFont
 	a.mu.RUnlock()
 	return theme.ThemeCSS(themeName, font)
@@ -313,22 +323,27 @@ func (a *App) SaveFileDialog() string {
 }
 
 // SavePdfFileDialog opens the native save-file dialog for exporting to PDF and
-// returns the chosen path (empty string when cancelled).
-func (a *App) SavePdfFileDialog(defaultFilename string) string {
+// returns the chosen path (empty string when cancelled, error when the dialog
+// fails to open).
+func (a *App) SavePdfFileDialog(defaultFilename string) (string, error) {
 	if defaultFilename == "" {
 		defaultFilename = "untitled.pdf"
 	}
-	f, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	opts := runtime.SaveDialogOptions{
 		Title:           "导出为 PDF",
 		DefaultFilename: defaultFilename,
 		Filters: []runtime.FileFilter{
 			{DisplayName: "PDF 文档", Pattern: "*.pdf"},
 		},
-	})
-	if err != nil {
-		return ""
 	}
-	return f
+	if a.saveFileDialog != nil {
+		return a.saveFileDialog(a.ctx, opts)
+	}
+	f, err := runtime.SaveFileDialog(a.ctx, opts)
+	if err != nil {
+		return "", err
+	}
+	return f, nil
 }
 
 // SavePdfFile decodes base64-encoded PDF data and writes it atomically to path.

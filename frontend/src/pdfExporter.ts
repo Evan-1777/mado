@@ -11,14 +11,15 @@ import { buildPdfFromImages, uint8ArrayToBase64, A4_PAGE_SIZE, type PdfPageImage
 
 export interface ExportPdfOptions {
   theme: 'light' | 'current';
-  scale: number; // 50 to 200
   margin: 'std' | 'compact' | 'wide';
   renderMath?: (root: HTMLElement) => void;
+  onProgress?: (current: number, total: number) => void;
 }
 
 // A4 proportions at 96 DPI: 210mm x 297mm ≈ 794px x 1123px (1 : 1.4142)
 const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
+const MAX_EXPORT_PAGES = 100;
 
 interface MarginSpec {
   top: number;
@@ -57,6 +58,23 @@ async function canvasToJpegBytes(canvas: HTMLCanvasElement, quality = 0.92): Pro
   });
 }
 
+function waitForLink(link: HTMLLinkElement): Promise<void> {
+  return new Promise((resolve) => {
+    if (link.sheet) {
+      resolve();
+      return;
+    }
+    const onDone = () => {
+      link.removeEventListener('load', onDone);
+      link.removeEventListener('error', onDone);
+      resolve();
+    };
+    link.addEventListener('load', onDone);
+    link.addEventListener('error', onDone);
+    setTimeout(onDone, 500);
+  });
+}
+
 /**
  * Exports rendered HTML to a standard PDF 1.4 Base64 string.
  */
@@ -68,7 +86,6 @@ export async function exportToPdfData(
   const marginSpec = MARGIN_SPECS[options.margin] || MARGIN_SPECS.std;
   const contentWidth = A4_WIDTH_PX - marginSpec.left - marginSpec.right;
   const pageInnerHeight = A4_HEIGHT_PX - marginSpec.top - marginSpec.bottom;
-  const scaleRatio = Math.max(50, Math.min(200, options.scale)) / 100;
   const isLight = options.theme === 'light';
 
   // 1. Create hidden host container in main DOM (attached so CSS/fonts work reliably)
@@ -100,7 +117,6 @@ export async function exportToPdfData(
       padding: 0;
       background: ${isLight ? '#ffffff' : 'var(--bg, #202020)'};
       color: ${isLight ? '#242424' : 'var(--fg, #ffffff)'};
-      zoom: ${scaleRatio};
     }
     .pdf-export-wrapper article#md-content {
       box-sizing: border-box;
@@ -133,10 +149,11 @@ export async function exportToPdfData(
   host.appendChild(wrapper);
 
   document.body.appendChild(host);
-  console.info('[ExportDiag] DOM prepared');
 
   try {
-    // 2. Render LaTeX math & wait for web fonts
+    // 2. Wait for KaTeX stylesheet, render math & wait for web fonts
+    await waitForLink(katexLink);
+
     if (options.renderMath) {
       options.renderMath(article);
     }
@@ -144,10 +161,9 @@ export async function exportToPdfData(
     if ('fonts' in document && document.fonts && 'ready' in document.fonts) {
       await Promise.race([
         document.fonts.ready,
-        new Promise((resolve) => setTimeout(resolve, 300)),
+        new Promise((resolve) => setTimeout(resolve, 500)),
       ]);
     }
-    console.info('[ExportDiag] math rendered & fonts ready');
 
     // 3. Measure content geometry & calculate page breakpoints with soft avoidance
     const articleRect = article.getBoundingClientRect();
@@ -196,6 +212,11 @@ export async function exportToPdfData(
       pageRanges.push({ startY: 0, endY: Math.max(totalHeight, 1) });
     }
 
+    // Guard against runaway page creation
+    if (pageRanges.length > MAX_EXPORT_PAGES) {
+      pageRanges.length = MAX_EXPORT_PAGES;
+    }
+
     // 4. Capture each page window independently to avoid Chromium 16384px limit
     const pageImages: PdfPageImage[] = [];
     const captureScale = 2; // 2x DPI for crisp rendering
@@ -214,18 +235,24 @@ export async function exportToPdfData(
     viewportBox.appendChild(wrapper);
     host.appendChild(viewportBox);
 
-    for (const range of pageRanges) {
+    for (let i = 0; i < pageRanges.length; i++) {
+      const range = pageRanges[i];
+      if (options.onProgress) {
+        options.onProgress(i + 1, pageRanges.length);
+      }
+
       const sliceHeight = Math.max(1, range.endY - range.startY);
       viewportBox.style.height = `${sliceHeight}px`;
       wrapper.style.position = 'relative';
       wrapper.style.top = `-${range.startY}px`;
 
-      // Render the current slice to Canvas
+      // Render the current slice to Canvas (ignore editor #app & dialogs to avoid full document cloning)
       const sliceCanvas = await html2canvas(viewportBox, {
         backgroundColor: isLight ? '#ffffff' : '#202020',
         scale: captureScale,
         useCORS: true,
         logging: false,
+        ignoreElements: (el) => el.id === 'app' || el.tagName === 'DIALOG',
       });
 
       // Composite onto full A4 Canvas with reconstructed margins
@@ -259,12 +286,9 @@ export async function exportToPdfData(
       a4Canvas.height = 0;
     }
 
-    console.info(`[ExportDiag] chunk capture completed, pageCount: ${pageImages.length}`);
-
     // 5. Build PDF 1.4 binary and convert to Base64
     const pdfBytes = buildPdfFromImages(pageImages, A4_PAGE_SIZE);
     const base64Data = uint8ArrayToBase64(pdfBytes);
-    console.info(`[ExportDiag] pdf base64 generated, bytes: ${pdfBytes.length}`);
 
     return base64Data;
   } finally {

@@ -177,8 +177,6 @@ for (const selector of [
   '.settings-text-input',
   '.theme-segmented button',
   '.export-close-btn',
-  '#export-step-minus',
-  '#export-step-plus',
   '.export-segmented button',
 ]) {
   if (!new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:focus-visible[^{]*\\{[^}]*outline:[^;]*var\\(--focus-ring\\)`).test(css)) {
@@ -216,13 +214,15 @@ has(html, 'method="dialog"', 'native dialog form');
 for (const value of ['value="cancel"', 'value="no"', 'value="yes"', 'value="export"']) {
   has(html, value, 'dialog submitter value');
 }
-for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', 'set-preview-font', 'export-scale-input', 'export-theme-seg', 'export-margin-seg']) {
+for (const id of ['set-theme-dark', 'set-theme-light', 'set-wrap', 'set-math', 'set-preview-font', 'export-theme-seg', 'export-margin-seg']) {
   has(html, `id="${id}"`, 'settings or export control');
 }
 has(html, 'aria-pressed="true"', 'segmented active pressed state');
 has(html, 'aria-pressed="false"', 'segmented inactive pressed state');
 hasNot(html, 'sheet-preview-card', 'decorative sheet card retired from html');
 hasNot(css, 'sheet-preview-card', 'decorative sheet card retired from css');
+hasNot(html, 'export-scale-input', 'retired scale stepper from html');
+hasNot(css, 'export-stepper', 'retired export stepper from css');
 has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
 has(html, 'data-theme="dark"', 'root default theme');
@@ -232,8 +232,10 @@ has(html, 'src="./app.js"', 'bundle asset path');
 // ---- pdf export pipeline ----
 hasNot(baseCss, '@media print', 'retired print media query');
 hasNot(ts, 'allow-modals', 'retired offscreen print iframe sandbox');
+hasNot(ts, '[ExportDiag]', 'no diagnostic probe in ts');
 has(ts, 'SavePdfFileDialog', 'wails SavePdfFileDialog binding');
 has(ts, 'SavePdfFile', 'wails SavePdfFile binding');
+has(ts, 'GetThemeCSS', 'GetThemeCSS binding for export');
 has(ts, 'exportToPdfData', 'pdfExporter pipeline import');
 
 // ---- shell markup built in TS ----

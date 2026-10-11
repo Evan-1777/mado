@@ -8,7 +8,7 @@ import { syntaxHighlighting, defaultHighlightStyle, indentOnInput, bracketMatchi
 import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
-  LoadFile, SaveFile, Render, GetCSS, GetSettings, SetTheme, SetDirty,
+  LoadFile, SaveFile, Render, GetCSS, GetThemeCSS, GetSettings, SetTheme, SetDirty,
   ForceQuit, GetStartupFile, SaveFileDialog, SavePdfFileDialog, SavePdfFile, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
   SetClipboard, SetWindowSize, SetWindowMaximized,
 } from '../wailsjs/go/main/App';
@@ -405,23 +405,12 @@ const setPreviewFontInput = document.getElementById('set-preview-font') as HTMLI
 // ---------------------------------------------------------------- export PDF
 const exportDialog = document.getElementById('export-dialog') as HTMLDialogElement | null;
 const exportForm = exportDialog?.querySelector('form.export-form') as HTMLFormElement | null;
-const exportStepMinusBtn = document.getElementById('export-step-minus') as HTMLButtonElement | null;
-const exportStepPlusBtn = document.getElementById('export-step-plus') as HTMLButtonElement | null;
-const exportScaleInput = document.getElementById('export-scale-input') as HTMLInputElement | null;
 const exportThemeSeg = document.getElementById('export-theme-seg');
 const exportMarginSeg = document.getElementById('export-margin-seg');
 const exportSubmitBtn = exportForm?.querySelector<HTMLButtonElement>('button[value="export"]') ?? null;
 
-let exportScale = 100;
 let exportTheme: 'light' | 'current' = 'light';
 let exportMargin: 'std' | 'compact' | 'wide' = 'std';
-
-function setExportScale(val: number) {
-  exportScale = Math.max(50, Math.min(200, Math.round(val)));
-  if (exportScaleInput) {
-    exportScaleInput.value = `${exportScale}%`;
-  }
-}
 
 function openExportModal() {
   if (!exportDialog) return;
@@ -1193,7 +1182,6 @@ settingsDialog?.addEventListener('click', (e) => {
 
 async function runExport() {
   const md = cm.state.doc.toString();
-  console.info(`[ExportDiag] runExport started, docLength: ${md.length}, theme: ${exportTheme}, scale: ${exportScale}`);
 
   if (exportSubmitBtn) {
     exportSubmitBtn.disabled = true;
@@ -1201,35 +1189,36 @@ async function runExport() {
   }
 
   try {
-    const [html, baseThemeCss] = await Promise.all([Render(md), cssForTheme()]);
+    const [html, baseThemeCss] = await Promise.all([
+      Render(md),
+      exportTheme === 'light' ? GetThemeCSS('light') : cssForTheme(),
+    ]);
     const base64Data = await exportToPdfData(html, baseThemeCss, {
       theme: exportTheme,
-      scale: exportScale,
       margin: exportMargin,
       renderMath: renderMathInRoot,
+      onProgress: (current, total) => {
+        if (exportSubmitBtn) {
+          exportSubmitBtn.textContent = `导出中 (${current}/${total})...`;
+        }
+      },
     });
 
     const defaultBase = currentFile ? baseName(currentFile).replace(/\.[^/.]+$/, '') : 'untitled';
     const defaultPdfName = `${defaultBase || 'untitled'}.pdf`;
 
-    console.info('[ExportDiag] calling SavePdfFileDialog');
     const chosenPath = await SavePdfFileDialog(defaultPdfName);
-    console.info(`[ExportDiag] SavePdfFileDialog returned path: ${chosenPath || '(empty)'}`);
-
     if (!chosenPath) {
-      console.info('[ExportDiag] user cancelled save');
       return;
     }
 
     await SavePdfFile(chosenPath, base64Data);
-    console.info('[ExportDiag] export succeeded');
 
     exportDialog?.close();
     statusEl.textContent = `已导出为 PDF: ${baseName(chosenPath)}`;
     statusContainer.classList.add('stealth');
     statusContainer.classList.remove('error', 'unsaved');
   } catch (err) {
-    console.error('[ExportDiag] export failed', err);
     statusEl.textContent = '导出失败';
     statusContainer.classList.add('error');
     statusContainer.classList.remove('stealth', 'unsaved');
@@ -1253,30 +1242,6 @@ exportDialog?.addEventListener('click', (e) => {
   );
   if (!isInDialog) {
     exportDialog.close();
-  }
-});
-
-exportStepMinusBtn?.addEventListener('click', () => {
-  setExportScale(exportScale - 10);
-});
-
-exportStepPlusBtn?.addEventListener('click', () => {
-  setExportScale(exportScale + 10);
-});
-
-exportScaleInput?.addEventListener('change', () => {
-  const raw = parseInt(exportScaleInput.value.replace(/[^0-9]/g, ''), 10);
-  if (!isNaN(raw)) {
-    setExportScale(raw);
-  } else {
-    setExportScale(exportScale);
-  }
-});
-
-exportScaleInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    exportScaleInput.blur();
   }
 });
 

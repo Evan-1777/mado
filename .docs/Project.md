@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **阶段**：开发中（自研文档按页分块高保真 PDF 导出管线（方案 B：缩放与多维版面控制）、窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；导出弹窗与多页导出待 Windows 端手动验收）
+- **阶段**：开发中（自研文档按页分块高保真 PDF 导出管线（方案 B：色彩与边距版面控制，下线失效缩放步进）、窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；导出弹窗与多页导出经 dev-only 无头冒烟全覆盖）
 - **非目标**：多标签页、插件系统、导出独立 HTML、Mermaid 图表（详见 `SCOPE.md` 设计原则）
 
 ## 环境与运行
@@ -21,7 +21,7 @@
     3. `npm run build`（esbuild 打包后调用 `npm run copy-assets`）产出 `dist/`（go:embed 依赖）
     4. `go vet ./...` + `go test ./...`
   - 云端 CI：`.github/workflows/build.yml`（Windows 构建，`wails build` 输出 `build/bin/mado.exe` artifact）；发布流程见 `.github/workflows/release.yml`（tag `v*` 触发创建 Release）
-- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler、pdfBuilder 与 uiContract 6 项自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/modeScroll.check.mjs` 与 `node tests/startup.check.mjs`（不接入 npm test/CI）；交互行为手动验收
+- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler、pdfBuilder 与 uiContract 6 项自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/modeScroll.check.mjs`、`node tests/startup.check.mjs` 与 `node tests/export.check.mjs`（不接入 npm test/CI）；交互行为手动验收
 - ★ 路径含空格或中文时加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅为旧配置的一次性迁移源目录，应用不再向其写入
 - ★ 本开发环境 `NODE_ENV=production` 且 `omit=dev`，安装依赖必须执行 `npm install --include=dev`，否则 esbuild 会被静默跳过
 - ★ 零产物语法检查必须带 `--loader:.css=empty`，否则 `import './style.css'` 会直接报错；禁止使用 `--outfile=/dev/null` 导致在工作区遗留字面文件 `nul.css`
@@ -68,7 +68,7 @@ mado/
   - **聚焦目录与双向跳转**：成功渲染后前端从 Markdown ATX 解析大纲树，支持 Flat 结构与六级颜色令牌折叠展开；行号栏由 Go ASTTransformer 在顶层块写入 `data-line`，预览 CSS `content: attr(data-line)` 自动跟随排版渲染；Editor 行号槽点击二分定位对应块并平滑置顶，Preview 行号栏点击按坐标换算行号并在编辑器内平滑滚动置顶。
   - **窗口全向缩放与状态记忆**：顶层 Fixed Overlay 8 方向透明把手响应 mousedown 发送原生 resize 指令，绕过滚动条阻断；前端监听窗口尺寸变化，250ms 尾随防抖写入尺寸并分离记录最大化状态，退出前通过 `flushWindowState` 强制刷盘。
   - **保存与关闭确认**：保存时写入同目录临时文件、继承原权限、`Sync()` 刷盘后原子 `Rename` 替换；退出或新建未保存文件时，前端弹原生 `<dialog>` 三态模态确认，关闭确认由前端接管后调用 `ForceQuit`。
-  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（50%~200% 缩放步进、浅色/当前主题、标准/紧凑/宽松边距）→ 点击「导出」呈现加载禁用态 → 前端自研分块捕获器注入完整主题 CSS（`cssForTheme()`）与 KaTeX 样式，回填公式并等待 `document.fonts.ready` 就绪 → 按 A4 几何比例与子元素下沿软断页逐页分块绘制至独立 Canvas（单页捕获彻底规避 Chromium 16384px 硬件上限）并重建统一内页边距 → 纯 TypeScript 自研轻量 PDF 1.4 包装器将多页编码为标准 PDF 二进制并转为 Base64 → 调用 Wails 原生 `SavePdfFileDialog` 调起 Windows 系统另存为对话框 → 确认后经 `SavePdfFile` 与 `filesys.WriteFile` 完成短写保护原子落盘，成功后更新状态栏，取消或异常安全复位。
+  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（浅色/当前主题、标准/紧凑/宽松边距，依 YAGNI 退役未证实且与 html2canvas 冲突的缩放步进）→ 点击「导出」呈现加载禁用态与实时分块进度反馈 → 前端显式拉取目标主题完整 CSS（`GetThemeCSS(exportTheme)`）与 KaTeX 样式，等待 link load 事件与公式回填，确保 `@font-face` 与 `document.fonts.ready` 真实就绪 → 按 A4 几何比例与子元素下沿软断页逐页分块绘制至独立 Canvas（html2canvas 配置 `ignoreElements` 阻断对 `#app` 与对话框的递归整树克隆，规避 O(pages × document) 卡死风险，单页捕获彻底规避 Chromium 16384px 硬件上限）并重建统一内页边距（上限 100 页） → 纯 TypeScript 自研轻量 PDF 1.4 包装器将多页编码为标准 PDF 二进制并转为 Base64 → 调用 Wails 原生 `SavePdfFileDialog`（契约对齐 `(string, error)`，区分用户取消与宿主异常）调起系统另存为对话框 → 确认后经 `SavePdfFile` 与 `filesys.WriteFile` 完成短写保护原子落盘，成功后更新状态栏，取消静默复位，异常提示「导出失败」。
 - **依赖方向**：`internal/*` 禁止相互依赖（filesys 与 settings 仅通过共享 JSON 文件松耦合）；`main.go` 与 `app.go` 是唯一允许引用 internal 的外层包；前端仅通过 `frontend/wailsjs/` 生成的绑定与后端通信，禁止直调原生 API；`mdrender`、`theme`、`filesys`、`settings` 为纯 Go 包，测试不依赖 GUI。
 
 ## 约定
@@ -143,7 +143,13 @@ mado/
 - 按 A4 页面窗口分块独立渲染规避 Canvas 尺寸上限——超长文档单张长 Canvas 会触及 Chromium 16384px / 2.68 亿像素硬件硬上限导致静默崩溃；遍历子元素下沿软避让断页并在每页独立绘制至 Canvas，重建统一页边距，支持任意长文档稳定导出
 - 采用纯 TypeScript 自研轻量 PDF 1.4 编码器而无需大型外部库——组装标准 PDF 字典、交叉引用表（xref）与 DCTDecode 图像流对象代码量不足 150 行，零依赖且生成速度极快；权衡上接受位图页面呈现，在保证公式高保真、语法色彩与字体自包含的同时杜绝 30MB+ 外部 PDF 库与 15MB+ CJK 矢量字体负担
 - 彻底移除 base.css 的 @media print 规则块与打印缩放变量——遵循工程纪律，新管线不走系统打印，消除死代码与维护歧义
-- 导出 PDF 本地验证由 uiContract 与 pdfBuilder 自检锁定 DOM/PDF 规范契约，物理多页 PDF 与排版视觉由 Windows 端手动验收——Linux 开发环境无 WebView2 运行时，按职责清单分工保持最小占用
+- 导出 PDF 本地验证由 uiContract、pdfBuilder 自检与 export.check.mjs 无头冒烟共同锁定，物理排版视觉由 Windows 端验收——Linux 开发环境覆盖数据流、DOM 与 PDF 1.4 规范契约，保持最小占用
+- SavePdfFileDialog 契约显式返回 (string, error) 区分取消与失败——runtime.SaveFileDialog 在宿主限制或 context 异常时返回 error，原有契约返回空串会与用户取消同构导致静默吞掉报错；返回 error 后前端区分静默退出与状态栏错误告警
+- 依据 YAGNI 与最短有效差分退役导出缩放步进控件——html2canvas 白名单不含 zoom 导致放大时右侧被 viewportBox 裁切且测量坐标与捕获坐标断裂；恒定以 100% 真实 A4 物理比例输出消除过度承诺与几何错位
+- 导出主题样式经 GetThemeCSS(themeName) 显式按需拉取——GetCSS() 恒按当前应用主题输出，暗色主题下导出浅色若仅覆盖 wrapper 背景会导致代码块/标题等 CSS 变量仍为暗色；显式拉取使目标主题 tokens 与 base 样式完全匹配
+- KaTeX 样式表 link 必须显式 await load 事件后再等待字体就绪——document.fonts.ready 仅等待已被布局引用的字体，外部 link 未解析完成时 KaTeX @font-face 尚未进入字体表会导致字体等待空转并降级为回退字体渲染
+- html2canvas 捕获必须忽略 #app 与 dialog 节点——html2canvas 内部克隆从 documentElement 开始，长文档循环分页会导致 O(pages × document) 的重排开销；ignoreElements 过滤无关大型 DOM 消除卡顿
+- 导出核心链路通过 dev-only 无头 Chrome 冒烟用例（export.check.mjs）自动化闭环——在 Linux 开发环境无需 GUI 即可验证弹窗唤起、主题拉取、Base64 PDF 1.4 二进制头/尾结构、用户取消与异常处理
 
 ## 术语
 

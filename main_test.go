@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"mado/internal/settings"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // TestStartupCreatesNoWelcomeDoc verifies startup is read-only: it must not
@@ -406,6 +409,89 @@ func TestSavePdfFile(t *testing.T) {
 		err := app.SavePdfFile("", "AAAA")
 		if err == nil {
 			t.Fatal("expected error for empty path, got nil")
+		}
+	})
+}
+
+func TestGetThemeCSS(t *testing.T) {
+	app := NewApp()
+
+	t.Run("light theme returns light tokens", func(t *testing.T) {
+		css, err := app.GetThemeCSS("light")
+		if err != nil {
+			t.Fatalf("GetThemeCSS(light): %v", err)
+		}
+		if !strings.Contains(css, "/* mado theme tokens: light */") {
+			t.Fatal("expected light tokens in composed css")
+		}
+	})
+
+	t.Run("dark theme returns dark tokens", func(t *testing.T) {
+		css, err := app.GetThemeCSS("dark")
+		if err != nil {
+			t.Fatalf("GetThemeCSS(dark): %v", err)
+		}
+		if !strings.Contains(css, "/* mado theme tokens: dark */") {
+			t.Fatal("expected dark tokens in composed css")
+		}
+	})
+
+	t.Run("unknown theme returns error", func(t *testing.T) {
+		_, err := app.GetThemeCSS("unknown")
+		if err == nil {
+			t.Fatal("expected error for unknown theme, got nil")
+		}
+	})
+}
+
+func TestSavePdfFileDialog(t *testing.T) {
+	t.Run("dialog error returns error", func(t *testing.T) {
+		app := &App{
+			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
+				return "", errors.New("host dialog error")
+			},
+		}
+		path, err := app.SavePdfFileDialog("doc.pdf")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if path != "" {
+			t.Fatalf("expected empty path on error, got %q", path)
+		}
+	})
+
+	t.Run("dialog cancel returns empty path and nil error", func(t *testing.T) {
+		app := &App{
+			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
+				return "", nil
+			},
+		}
+		path, err := app.SavePdfFileDialog("doc.pdf")
+		if err != nil {
+			t.Fatalf("expected nil error on cancel, got %v", err)
+		}
+		if path != "" {
+			t.Fatalf("expected empty path on cancel, got %q", path)
+		}
+	})
+
+	t.Run("dialog success returns chosen path and defaults empty name", func(t *testing.T) {
+		var capturedName string
+		app := &App{
+			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
+				capturedName = opts.DefaultFilename
+				return "/home/user/export.pdf", nil
+			},
+		}
+		path, err := app.SavePdfFileDialog("")
+		if err != nil {
+			t.Fatalf("SavePdfFileDialog: %v", err)
+		}
+		if path != "/home/user/export.pdf" {
+			t.Fatalf("got path %q, want /home/user/export.pdf", path)
+		}
+		if capturedName != "untitled.pdf" {
+			t.Fatalf("got default filename %q, want untitled.pdf", capturedName)
 		}
 	})
 }
