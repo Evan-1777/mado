@@ -30,6 +30,7 @@
   1. 基于 Explore 结论，制定分阶段实施计划
   2. 明确每阶段的输入、输出与验收标准
   3. 评估风险并记录关键决策
+  4. 评估 Subagent 协同需求，输出协同规划结论（基于三维权衡，明确各 Phase 哪些移交 Subagent 并行、哪些保留主线；收益不足或上下文强相关时不强制使用，保持克制）
 - **约束**：
   - 计划必须写入 Plan.md
   - 阶段粒度不超过 5 个
@@ -49,7 +50,7 @@
 
 - **任务**：
   1. 将 Plan 拆解为可原子执行的 Task
-  2. 每个 Task 须含：编号、状态、描述、Details、验收标准
+  2. 每个 Task 须含：编号、状态、执行主体（主线 / Subagent: <agent名>）、描述、Details、验收标准
   3. 标注依赖关系与优先级
 - **约束**：
   - 必须写入 Tasks.md
@@ -116,17 +117,17 @@
 
 ## Subagent 定义
 
-以下 subagent 定义于 `.pi/agents/`，任意工作流均可引用，用户也可直接通过 `subagent_type` 调用。
+Subagent 经安装器部署后，由各工具（Pi / Opencode / ClaudeCode / AGY / CodeBuddy / DSH）原生机制按名称识别与加载，提示词与调用指令中不引用工具物理目录。
 
-| Agent | 文件 | 职责 | 默认模型 |
-|-------|------|------|---------|
-| explore | `.pi/agents/explore.md` | 只读代码库探索，返回结构化报告 | 主模型（未指定不 spawn） |
-| executor | `.pi/agents/executor.md` | Execute → Test → Doc Maintenance → Archive → Git Commit | haiku+high |
+| Agent | 职责 | 默认模型 |
+|-------|------|---------|
+| explore | 只读代码库探索，返回结构化报告 | 主模型（未指定不 spawn） |
+| executor | Execute → Test → Doc Maintenance → Archive → Git Commit | haiku+high |
 
 ### 通用约定
 
 所有 subagent 共享：
-- **Prompt 格式**：调用时优先用工作流模板覆盖或替换 Agent 工具的默认提示词格式；若工具接口强制要求特定格式且无法替换，保留该格式，并在其后附加完整的工作流提示词模板内容，确保目标、上下文、边界和报告要求均传达。
+- **Prompt 格式**：当用户显式调用工作流（如输入含 Main、Main-hybrid、Quick 等关键词）或处于活跃工作流生命周期（存在活跃 Plan.md / Tasks.md）时，主 Agent 派发 Subagent **必须且仅能严格使用工作流三行模版格式传入 Prompt 参数**。严禁以自由自然语言叙述替代该模版，严禁在 Prompt 中大段堆砌业务上下文或复制业务代码。当 Harness 底层调用工具含有必填元数据字段（如 `TypeName`、`Role`）时，按工具定义填入标识，但 `Prompt` 正文必须严格且仅包含三行模板。常规日常非工作流对话不施加此三行限制。
 - `inherit_context: false` — 隔离会话；以目标为单位委托，允许并行多开，同一时刻不超过 3 个
 - **嵌套**：subagent 仅由主线 spawn，被委托方不得再 spawn subagent——任务须在单层内完成
 - 执行中不与主 Agent 通信；遇障碍 `advisor` → 自行决策 → 继续；整链结束后 return 最终报告
@@ -137,32 +138,32 @@
 
 subagent 以 `inherit_context: false` 隔离运行：不继承当前会话上下文，主 Agent 与子 Agent 之间为一次性交付——传递完整输入、回收最终报告，中途无法通信。
 
-是否委托按以下方面权衡：
+是否委托按以下三维效益权衡：
 
 - **任务复杂度**：任务越庞大、链路越长、越能独立成篇，委托收益越高；越琐碎越短，主线自行处理越直接。
 - **任务上下文关联程度**：目标越能被独立界定、越不依赖当前会话已有的推演与决策，越适合委托；越依赖主线上下文与多轮交互，越应由主线自行处理。
-- **经济效益**：任务所需的项目上下文越庞大复杂，越无法在 prompt 中交代完整，subagent 就得自行重读，这部分 Token 无法回流主线；任务耗时越长，主线空等越久，越可能使主 Agent 缓存失效。委托收益需覆盖这两项成本，并行多开时成倍放大。
+- **经济与时间效益**：综合评估 Token 消耗与并行加速。Subagent 启动需独立重载上下文，若交代背景与重复读盘开销超过任务本身，或属于串行阻塞链路无法形成实质并行，委托无法带来时间效益且浪费 Token；仅当能与主线真正并行推进、显著缩短端到端耗时且输出自包含时，委托才具备正向效益。
 
-是否使用是权衡而非义务：不盲目调用，也不因成本而回避；委托前把被委托方需要的信息补全。以目标为单位委托，允许并行多开，同一时刻运行的 subagent 不超过 3 个，超出时排队或合并。
+**权衡而非义务**：在 Plan 阶段先行评估必要性与收益，在 Task 阶段显式标注执行主体；不盲目频繁调用，也不因偏好而完全回避。收益不大或强依赖会话上下文的修改，坚决保留主线处理，绝不为了使用而强制派发。以目标为单位委托，允许并行多开，同一时刻运行的 subagent 不超过 3 个，超出时排队或合并。
 
 ### explore
 
-只读探索，返回结构化报告（Files Examined / Architecture Overview / Risks / Recommendations）。Spawn 时传入 `{one-line goal}`，agent 自行读取 Project.md、SCOPE.md、Plan.md、Tasks.md（缺失跳过）。
+只读探索，返回结构化报告（Files Examined / Architecture Overview / Risks / Recommendations）。Spawn 时传入 `{one-line goal / target tasks}`，agent 自行读取 Project.md、SCOPE.md、Plan.md、Tasks.md（缺失跳过）。
 
 Spawn prompt 模板：
 ```
-Goal: {one-line goal}
+Goal: {one-line goal / target tasks}
 Read: Project.md, SCOPE.md, Plan.md, Tasks.md (.docs/ or root).
 Rules: read-only, no edits; no subagents; return structured findings in explore format.
 ```
 
 ### executor
 
-执行完整交付链，返回最终报告（Status / Tasks / Test / Files Changed / Open Issues）。Spawn 时传入 `{one-line goal}`，agent 自行读取 Project.md、SCOPE.md、Plan.md、Tasks.md。
+执行完整交付链，返回最终报告（Status / Tasks / Test / Files Changed / Open Issues）。Spawn 时传入 `{one-line goal / target tasks}`，agent 自行读取 Project.md、SCOPE.md、Plan.md、Tasks.md。
 
 Spawn prompt 模板：
 ```
-Goal: {one-line goal}
+Goal: {one-line goal / target tasks}
 Read: Project.md, SCOPE.md, Plan.md, Tasks.md (.docs/ or root).
 Rules: no parent channel; no subagents; on blockers call advisor; return executor format report.
 ```
