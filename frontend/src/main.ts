@@ -9,7 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
   LoadFile, SaveFile, Render, GetCSS, GetSettings, SetTheme, SetDirty,
-  ForceQuit, GetStartupFile, SaveFileDialog, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
+  ForceQuit, GetStartupFile, SaveFileDialog, SavePdfFileDialog, SavePdfFile, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
   SetClipboard, SetWindowSize, SetWindowMaximized,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowGetSize, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
@@ -17,6 +17,7 @@ import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
 import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
 import { createRenderScheduler } from './renderScheduler';
+import { exportToPdfData } from './pdfExporter';
 
 // ---------------------------------------------------------------- helpers
 
@@ -409,16 +410,11 @@ const exportStepPlusBtn = document.getElementById('export-step-plus') as HTMLBut
 const exportScaleInput = document.getElementById('export-scale-input') as HTMLInputElement | null;
 const exportThemeSeg = document.getElementById('export-theme-seg');
 const exportMarginSeg = document.getElementById('export-margin-seg');
+const exportSubmitBtn = exportForm?.querySelector<HTMLButtonElement>('button[value="export"]') ?? null;
 
 let exportScale = 100;
 let exportTheme: 'light' | 'current' = 'light';
 let exportMargin: 'std' | 'compact' | 'wide' = 'std';
-
-const MARGIN_MAP: Record<string, string> = {
-  std: '20mm',
-  compact: '10mm',
-  wide: '30mm',
-};
 
 function setExportScale(val: number) {
   exportScale = Math.max(50, Math.min(200, Math.round(val)));
@@ -597,9 +593,9 @@ async function cssForTheme(): Promise<string> {
 
 const mathCache = new Map<string, string>();
 
-function renderMathInFrame(frameDoc: Document | null | undefined) {
-  if (!frameDoc) return;
-  const elements = frameDoc.querySelectorAll<HTMLElement>('.math-inline, .math-block');
+function renderMathInRoot(root: Document | HTMLElement | null | undefined) {
+  if (!root) return;
+  const elements = root.querySelectorAll<HTMLElement>('.math-inline, .math-block');
   elements.forEach((el) => {
     const tex = el.getAttribute('data-tex') ?? el.textContent ?? '';
     const displayMode = el.classList.contains('math-block');
@@ -617,6 +613,10 @@ function renderMathInFrame(frameDoc: Document | null | undefined) {
     }
     el.innerHTML = rendered;
   });
+}
+
+function renderMathInFrame(frameDoc: Document | null | undefined) {
+  renderMathInRoot(frameDoc);
 }
 
 // Preview updates happen in place inside the iframe (swap the <style> text
@@ -1193,90 +1193,51 @@ settingsDialog?.addEventListener('click', (e) => {
 
 async function runExport() {
   const md = cm.state.doc.toString();
+  console.info(`[ExportDiag] runExport started, docLength: ${md.length}, theme: ${exportTheme}, scale: ${exportScale}`);
+
+  if (exportSubmitBtn) {
+    exportSubmitBtn.disabled = true;
+    exportSubmitBtn.textContent = '生成中...';
+  }
+
   try {
     const [html, baseThemeCss] = await Promise.all([Render(md), cssForTheme()]);
-    const margin = MARGIN_MAP[exportMargin] || '20mm';
-    const scaleRatio = exportScale / 100;
-
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position: fixed; left: -10000px; top: -10000px; width: 1024px; height: 768px; border: 0;';
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.setAttribute('sandbox', 'allow-same-origin allow-modals');
-    iframe.tabIndex = -1;
-
-    const printSkeleton = `<!DOCTYPE html>
-<html lang="zh-CN"${exportTheme === 'current' ? ' data-print-theme="current"' : ''}>
-<head>
-<meta charset="utf-8"/>
-<link rel="stylesheet" href="./katex/katex.min.css"/>
-<style>
-:root {
-  --print-scale: ${scaleRatio};
-  --print-margin: ${margin};
-}
-${baseThemeCss}
-</style>
-</head>
-<body>
-<article id="md-content">${html}</article>
-</body>
-</html>`;
-
-    let cleaned = false;
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    };
-
-    const loadPromise = new Promise<void>((resolve) => {
-      let resolved = false;
-      const done = () => {
-        if (!resolved) {
-          resolved = true;
-          resolve();
-        }
-      };
-      iframe.onload = done;
-      setTimeout(done, 1000);
+    const base64Data = await exportToPdfData(html, baseThemeCss, {
+      theme: exportTheme,
+      scale: exportScale,
+      margin: exportMargin,
+      renderMath: renderMathInRoot,
     });
 
-    document.body.appendChild(iframe);
-    iframe.srcdoc = printSkeleton;
+    const defaultBase = currentFile ? baseName(currentFile).replace(/\.[^/.]+$/, '') : 'untitled';
+    const defaultPdfName = `${defaultBase || 'untitled'}.pdf`;
 
-    await loadPromise;
+    console.info('[ExportDiag] calling SavePdfFileDialog');
+    const chosenPath = await SavePdfFileDialog(defaultPdfName);
+    console.info(`[ExportDiag] SavePdfFileDialog returned path: ${chosenPath || '(empty)'}`);
 
-    const printDoc = iframe.contentDocument;
-    const printWin = iframe.contentWindow;
-
-    if (printDoc) {
-      renderMathInFrame(printDoc);
-      if ('fonts' in printDoc && printDoc.fonts && 'ready' in printDoc.fonts) {
-        await Promise.race([
-          printDoc.fonts.ready,
-          new Promise((resolve) => setTimeout(resolve, 300)),
-        ]);
-      }
+    if (!chosenPath) {
+      console.info('[ExportDiag] user cancelled save');
+      return;
     }
 
-    try {
-      if (printWin) {
-        printWin.onafterprint = cleanup;
-        printWin.focus();
-        printWin.print();
-      }
-      setTimeout(cleanup, 1000);
-    } catch (printErr) {
-      cleanup();
-      throw printErr;
-    }
+    await SavePdfFile(chosenPath, base64Data);
+    console.info('[ExportDiag] export succeeded');
+
+    exportDialog?.close();
+    statusEl.textContent = `已导出为 PDF: ${baseName(chosenPath)}`;
+    statusContainer.classList.add('stealth');
+    statusContainer.classList.remove('error', 'unsaved');
   } catch (err) {
-    console.error('runExport failed', err);
+    console.error('[ExportDiag] export failed', err);
     statusEl.textContent = '导出失败';
     statusContainer.classList.add('error');
     statusContainer.classList.remove('stealth', 'unsaved');
+  } finally {
+    if (exportSubmitBtn) {
+      exportSubmitBtn.disabled = false;
+      exportSubmitBtn.textContent = '导出';
+    }
   }
 }
 
@@ -1349,6 +1310,7 @@ exportForm?.addEventListener('submit', (event) => {
   const submitter = (event as SubmitEvent).submitter;
   const value = submitter?.getAttribute('value');
   if (value === 'export') {
+    event.preventDefault();
     void runExport();
   }
 });

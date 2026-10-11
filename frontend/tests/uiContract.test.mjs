@@ -229,17 +229,17 @@ has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
 has(html, 'src="./app.js"', 'bundle asset path');
 
-// ---- print styles ----
-has(baseCss, '@media print', 'print media query');
-hasRule(baseCss, 'body.md-gutter #md-content > [data-line]::before', 'display: none !important', 'print gutter hiding');
-hasRule(baseCss, '.copy-code-btn', 'display: none !important', 'print copy button hiding');
-hasRule(baseCss, 'body', 'zoom: var(--print-scale, 1)', 'print scale zoom');
+// ---- pdf export pipeline ----
+hasNot(baseCss, '@media print', 'retired print media query');
+hasNot(ts, 'allow-modals', 'retired offscreen print iframe sandbox');
+has(ts, 'SavePdfFileDialog', 'wails SavePdfFileDialog binding');
+has(ts, 'SavePdfFile', 'wails SavePdfFile binding');
+has(ts, 'exportToPdfData', 'pdfExporter pipeline import');
 
 // ---- shell markup built in TS ----
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
-has(ts, "iframe.setAttribute('sandbox', 'allow-same-origin allow-modals')", 'export iframe sandbox');
 has(ts, "b.setAttribute('aria-pressed', 'false')", 'export segmented aria-pressed reset');
 has(ts, "btn.setAttribute('aria-pressed', 'true')", 'export segmented aria-pressed set');
 for (const [mode, label] of [['editor', '编辑'], ['preview', '预览'], ['split', '分栏']]) {

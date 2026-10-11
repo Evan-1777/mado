@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -371,3 +372,41 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 		t.Fatal("concurrent lastfile writes did not complete")
 	}
 }
+
+func TestSavePdfFile(t *testing.T) {
+	app := NewApp()
+	dir := t.TempDir()
+
+	t.Run("valid base64 writes to disk", func(t *testing.T) {
+		target := filepath.Join(dir, "out.pdf")
+		raw := []byte("%PDF-1.4 sample content")
+		encoded := base64.StdEncoding.EncodeToString(raw)
+
+		if err := app.SavePdfFile(target, encoded); err != nil {
+			t.Fatalf("SavePdfFile: %v", err)
+		}
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("ReadFile: %v", err)
+		}
+		if string(got) != string(raw) {
+			t.Fatalf("got %q, want %q", string(got), string(raw))
+		}
+	})
+
+	t.Run("invalid base64 returns error", func(t *testing.T) {
+		target := filepath.Join(dir, "invalid.pdf")
+		err := app.SavePdfFile(target, "not-valid-base64!@#$")
+		if err == nil {
+			t.Fatal("expected error for invalid base64, got nil")
+		}
+	})
+
+	t.Run("empty path returns error", func(t *testing.T) {
+		err := app.SavePdfFile("", "AAAA")
+		if err == nil {
+			t.Fatal("expected error for empty path, got nil")
+		}
+	})
+}
+

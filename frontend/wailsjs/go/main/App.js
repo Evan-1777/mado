@@ -34,6 +34,14 @@ export function SaveFileDialog() {
   return window['go']['main']['App']['SaveFileDialog']();
 }
 
+export function SavePdfFileDialog(arg1) {
+  return window['go']['main']['App']['SavePdfFileDialog'](arg1);
+}
+
+export function SavePdfFile(arg1, arg2) {
+  return window['go']['main']['App']['SavePdfFile'](arg1, arg2);
+}
+
 export function SaveFile(arg1, arg2) {
   return window['go']['main']['App']['SaveFile'](arg1, arg2);
 }

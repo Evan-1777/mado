@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **阶段**：开发中（支持文档导出为 PDF（方案 B：缩放与多维版面控制）、窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；Windows 原生打印与交互待手动验收）
+- **阶段**：开发中（自研文档按页分块高保真 PDF 导出管线（方案 B：缩放与多维版面控制）、窗口尺寸与最大化状态记忆、Win32 原生剪贴板历史管道；导出弹窗与多页导出待 Windows 端手动验收）
 - **非目标**：多标签页、插件系统、导出独立 HTML、Mermaid 图表（详见 `SCOPE.md` 设计原则）
 
 ## 环境与运行
@@ -21,7 +21,7 @@
     3. `npm run build`（esbuild 打包后调用 `npm run copy-assets`）产出 `dist/`（go:embed 依赖）
     4. `go vet ./...` + `go test ./...`
   - 云端 CI：`.github/workflows/build.yml`（Windows 构建，`wails build` 输出 `build/bin/mado.exe` artifact）；发布流程见 `.github/workflows/release.yml`（tag `v*` 触发创建 Release）
-- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler 与 uiContract 自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/modeScroll.check.mjs` 与 `node tests/startup.check.mjs`（不接入 npm test/CI）；交互行为手动验收
+- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler、pdfBuilder 与 uiContract 6 项自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/modeScroll.check.mjs` 与 `node tests/startup.check.mjs`（不接入 npm test/CI）；交互行为手动验收
 - ★ 路径含空格或中文时加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅为旧配置的一次性迁移源目录，应用不再向其写入
 - ★ 本开发环境 `NODE_ENV=production` 且 `omit=dev`，安装依赖必须执行 `npm install --include=dev`，否则 esbuild 会被静默跳过
 - ★ 零产物语法检查必须带 `--loader:.css=empty`，否则 `import './style.css'` 会直接报错；禁止使用 `--outfile=/dev/null` 导致在工作区遗留字面文件 `nul.css`
@@ -49,9 +49,11 @@ mado/
 │  ├─ src/renderScheduler.ts# 尾随 80ms 节流渲染调度器
 │  ├─ src/fontCommit.ts     # 预览字体提交串行化控制
 │  ├─ src/gutter.ts         # 预览双向跳转行号二分查找定位
+│  ├─ src/pdfBuilder.ts     # 纯 TypeScript 极简 PDF 1.4 组装模块
+│  ├─ src/pdfExporter.ts    # 样式/字体注入与按页分块栅格化管线
 │  ├─ src/style.css         # 外壳 Fluent 2 设计令牌与组件样式
 │  ├─ scripts/copy-assets.mjs # 共享前端静态资源拷贝（KaTeX CSS 与 woff2 字体等）
-│  └─ tests/                # Node 原生自检与无头浏览器检查
+│  └─ tests/                # Node 原生自检（含 pdfBuilder.test.ts）与无头浏览器检查
 ├─ frontend/wailsjs/        # Wails 生成的前端绑定（仓库跟踪副本供本地 esbuild 语法检查，新增 Go 导出方法须同步手补）
 ├─ frontend/dist/           # 前端构建产物（go:embed 嵌入 exe，FS 根目录，gitignored）
 ├─ build/bin/mado.exe       # Windows 最终打包二进制产物（云端 CI 产物）
@@ -66,7 +68,7 @@ mado/
   - **聚焦目录与双向跳转**：成功渲染后前端从 Markdown ATX 解析大纲树，支持 Flat 结构与六级颜色令牌折叠展开；行号栏由 Go ASTTransformer 在顶层块写入 `data-line`，预览 CSS `content: attr(data-line)` 自动跟随排版渲染；Editor 行号槽点击二分定位对应块并平滑置顶，Preview 行号栏点击按坐标换算行号并在编辑器内平滑滚动置顶。
   - **窗口全向缩放与状态记忆**：顶层 Fixed Overlay 8 方向透明把手响应 mousedown 发送原生 resize 指令，绕过滚动条阻断；前端监听窗口尺寸变化，250ms 尾随防抖写入尺寸并分离记录最大化状态，退出前通过 `flushWindowState` 强制刷盘。
   - **保存与关闭确认**：保存时写入同目录临时文件、继承原权限、`Sync()` 刷盘后原子 `Rename` 替换；退出或新建未保存文件时，前端弹原生 `<dialog>` 三态模态确认，关闭确认由前端接管后调用 `ForceQuit`。
-  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（50%~200% 缩放步进、浅色/当前主题、标准/紧凑/宽松边距）→ 点击导出触发离屏可渲染 iframe 管道（position: fixed 且 left: -10000px，带 sandbox="allow-same-origin allow-modals"，绝非 display:none）→ 注入包含单一变量 --print-scale 与 --print-margin 的骨架文档与样式 → 严格等待 iframe load、KaTeX 公式回填与 document.fonts.ready 就绪 → 调用 printWindow.print() 唤出系统原生打印引擎 → 打印完成或兜底定时器自动从父 DOM 移除清理节点，全程零污染主预览视口滚动与编辑状态。
+  - **文档导出为 PDF**：标题栏导出按钮或快捷键（Ctrl+P / Ctrl+Shift+E）唤出方案 B 模态弹窗（50%~200% 缩放步进、浅色/当前主题、标准/紧凑/宽松边距）→ 点击「导出」呈现加载禁用态 → 前端自研分块捕获器注入完整主题 CSS（`cssForTheme()`）与 KaTeX 样式，回填公式并等待 `document.fonts.ready` 就绪 → 按 A4 几何比例与子元素下沿软断页逐页分块绘制至独立 Canvas（单页捕获彻底规避 Chromium 16384px 硬件上限）并重建统一内页边距 → 纯 TypeScript 自研轻量 PDF 1.4 包装器将多页编码为标准 PDF 二进制并转为 Base64 → 调用 Wails 原生 `SavePdfFileDialog` 调起 Windows 系统另存为对话框 → 确认后经 `SavePdfFile` 与 `filesys.WriteFile` 完成短写保护原子落盘，成功后更新状态栏，取消或异常安全复位。
 - **依赖方向**：`internal/*` 禁止相互依赖（filesys 与 settings 仅通过共享 JSON 文件松耦合）；`main.go` 与 `app.go` 是唯一允许引用 internal 的外层包；前端仅通过 `frontend/wailsjs/` 生成的绑定与后端通信，禁止直调原生 API；`mdrender`、`theme`、`filesys`、`settings` 为纯 Go 包，测试不依赖 GUI。
 
 ## 约定
@@ -137,10 +139,11 @@ mado/
 - KaTeX 构建产物仅分发 woff2 字体——WebView2/Chromium 原生支持 woff2，清理 ttf/woff 显著缩减二进制嵌入体积
 - lastfile 记录保持为只写不读——当前无启动恢复会话需求，保留只写记录为将来扩展预留数据
 - Windows 文件权限仅区分只读（0444）与可写（0666），且 MoveFileExW 不支持多线程向同一目标并发替换——并发测试必须为各 worker 分配独立保存路径以隔离目标锁定冲突
-- 导出 PDF 采用专用离屏可渲染 iframe（position: fixed 且 left: -10000px，带 sandbox="allow-same-origin allow-modals" 沙箱隔离）而非 display:none 或主预览 iframe——Chromium 在 display:none 下打印输出空白，主预览 iframe 在编辑模式下为隐藏态；离屏节点独立渲染彻底避免污染主工作区滚动偏移与编辑状态，显式沙箱严格阻断文档内联 on* 脚本在同源帧中执行，同时授予 allow-modals 解除 Chromium 对沙箱窗口调起 window.print() 的模态拦截，打印调用附带同步异常立即清理与兜底定时器双重保障
-- 打印排版以 CSS 变量 --print-scale 为单一缩放数据源，base.css 中消费 zoom: var(--print-scale, 1)——消除多套 zoom 叠加冲突，外部容器仅注入变量
-- 打印就绪建立串行检测契约（load → KaTeX 回填 → document.fonts.ready 配合 300ms 兜底 → print）——严格防止 woff2 异步字体与外部样式尚未栅格化完成即触发打印导致公式乱码或排版跳动
-- 导出 PDF 本地验证由 uiContract 与无头用例锁定 DOM/CSS/时序契约，物理矢量 PDF 与排版缩放由 Windows 端手动验收——Linux 开发环境无系统打印假脱机与 WebView2 驱动，分工明确保持本地验证最小占用
+- 彻底退役系统原生打印并改用自研按页分块 PDF 1.4 导出管线——WebView2 下沙箱 iframe 调用 window.print() 存在宿主 Chromium 模态限制导致请求被丢弃（无任何系统弹窗唤出）；新管线复用实证 100% 可靠的 Wails 原生 SaveFileDialog 通道唤出另存为窗口，从结构根源消除黑盒风险
+- 按 A4 页面窗口分块独立渲染规避 Canvas 尺寸上限——超长文档单张长 Canvas 会触及 Chromium 16384px / 2.68 亿像素硬件硬上限导致静默崩溃；遍历子元素下沿软避让断页并在每页独立绘制至 Canvas，重建统一页边距，支持任意长文档稳定导出
+- 采用纯 TypeScript 自研轻量 PDF 1.4 编码器而无需大型外部库——组装标准 PDF 字典、交叉引用表（xref）与 DCTDecode 图像流对象代码量不足 150 行，零依赖且生成速度极快；权衡上接受位图页面呈现，在保证公式高保真、语法色彩与字体自包含的同时杜绝 30MB+ 外部 PDF 库与 15MB+ CJK 矢量字体负担
+- 彻底移除 base.css 的 @media print 规则块与打印缩放变量——遵循工程纪律，新管线不走系统打印，消除死代码与维护歧义
+- 导出 PDF 本地验证由 uiContract 与 pdfBuilder 自检锁定 DOM/PDF 规范契约，物理多页 PDF 与排版视觉由 Windows 端手动验收——Linux 开发环境无 WebView2 运行时，按职责清单分工保持最小占用
 
 ## 术语
 
