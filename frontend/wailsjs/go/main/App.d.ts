@@ -20,9 +20,9 @@ export function Render(arg1:string):Promise<string>;
 
 export function SaveFileDialog():Promise<string>;
 
-export function SavePdfFileDialog(arg1:string):Promise<string>;
+export function SaveHtmlFileDialog(arg1:string):Promise<string>;
 
-export function SavePdfFile(arg1:string,arg2:string):Promise<void>;
+export function SaveHtmlFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveFile(arg1:string,arg2:string):Promise<void>;
 

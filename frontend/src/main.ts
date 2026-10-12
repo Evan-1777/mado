@@ -9,7 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 import {
   LoadFile, SaveFile, Render, GetCSS, GetThemeCSS, GetSettings, SetTheme, SetDirty,
-  ForceQuit, GetStartupFile, SaveFileDialog, SavePdfFileDialog, SavePdfFile, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
+  ForceQuit, GetStartupFile, SaveFileDialog, SaveHtmlFileDialog, SaveHtmlFile, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
   SetClipboard, SetWindowSize, SetWindowMaximized,
 } from '../wailsjs/go/main/App';
 import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowGetSize, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
@@ -17,7 +17,7 @@ import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
 import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
 import { createRenderScheduler } from './renderScheduler';
-import { exportToPdfData } from './pdfExporter';
+import { exportToHtmlData } from './htmlExporter';
 
 // ---------------------------------------------------------------- helpers
 
@@ -119,7 +119,7 @@ titlebar.innerHTML = `
     <button class="icon-btn" id="btn-open" title="打开文件 (Ctrl+O)" aria-label="打开文件">${GLYPH_OPEN}</button>
     <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">${GLYPH_THEME}</button>
     <button class="icon-btn" id="btn-save" title="保存文件 (Ctrl+S)" aria-label="保存文件">${GLYPH_SAVE}</button>
-    <button class="icon-btn" id="btn-export" title="导出为 PDF (Ctrl+P)" aria-label="导出为 PDF">${GLYPH_EXPORT}</button>
+    <button class="icon-btn" id="btn-export" title="导出为 HTML (Ctrl+Shift+E)" aria-label="导出为 HTML">${GLYPH_EXPORT}</button>
     <button class="icon-btn" id="btn-settings" title="设置" aria-label="设置">${GLYPH_SETTINGS}</button>
   </div>
   <div class="win-controls">
@@ -402,7 +402,7 @@ const setWrapInput = document.getElementById('set-wrap') as HTMLInputElement | n
 const setMathInput = document.getElementById('set-math') as HTMLInputElement | null;
 const setPreviewFontInput = document.getElementById('set-preview-font') as HTMLInputElement | null;
 
-// ---------------------------------------------------------------- export PDF
+// ---------------------------------------------------------------- export HTML
 const exportDialog = document.getElementById('export-dialog') as HTMLDialogElement | null;
 const exportForm = exportDialog?.querySelector('form.export-form') as HTMLFormElement | null;
 const exportThemeSeg = document.getElementById('export-theme-seg');
@@ -1178,44 +1178,39 @@ settingsDialog?.addEventListener('click', (e) => {
   }
 });
 
-// ---------------------------------------------------------------- export PDF pipeline
+// ---------------------------------------------------------------- export HTML pipeline
 
 async function runExport() {
-  const md = cm.state.doc.toString();
-
   if (exportSubmitBtn) {
     exportSubmitBtn.disabled = true;
     exportSubmitBtn.textContent = '生成中...';
   }
 
   try {
+    const md = cm.state.doc.toString();
     const [html, baseThemeCss] = await Promise.all([
       Render(md),
       exportTheme === 'light' ? GetThemeCSS('light') : cssForTheme(),
     ]);
-    const base64Data = await exportToPdfData(html, baseThemeCss, {
-      theme: exportTheme,
+    const docTitle = titleEl.textContent || 'untitled';
+    const htmlData = await exportToHtmlData(html, baseThemeCss, {
+      title: docTitle,
       margin: exportMargin,
       renderMath: renderMathInRoot,
-      onProgress: (current, total) => {
-        if (exportSubmitBtn) {
-          exportSubmitBtn.textContent = `导出中 (${current}/${total})...`;
-        }
-      },
     });
 
     const defaultBase = currentFile ? baseName(currentFile).replace(/\.[^/.]+$/, '') : 'untitled';
-    const defaultPdfName = `${defaultBase || 'untitled'}.pdf`;
+    const defaultHtmlName = `${defaultBase || 'untitled'}.html`;
 
-    const chosenPath = await SavePdfFileDialog(defaultPdfName);
+    const chosenPath = await SaveHtmlFileDialog(defaultHtmlName);
     if (!chosenPath) {
       return;
     }
 
-    await SavePdfFile(chosenPath, base64Data);
+    await SaveHtmlFile(chosenPath, htmlData);
 
     exportDialog?.close();
-    statusEl.textContent = `已导出为 PDF: ${baseName(chosenPath)}`;
+    statusEl.textContent = `已导出为 HTML: ${baseName(chosenPath)}`;
     statusContainer.classList.add('stealth');
     statusContainer.classList.remove('error', 'unsaved');
   } catch (err) {

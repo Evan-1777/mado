@@ -1,6 +1,7 @@
-// Dev-only headless-Chrome self-check for PDF export pipeline.
-// Verifies export dialog opening, theme selection, SavePdfFileDialog/SavePdfFile
-// contract, PDF 1.4 binary structure, cancel branch, and error handling.
+// Dev-only headless-Chrome self-check for the standalone HTML export pipeline.
+// Verifies export dialog opening, theme selection, SaveHtmlFileDialog/SaveHtmlFile
+// contract, the exported HTML document structure (theme CSS, KaTeX CDN link,
+// paged-media rules, rendered math), cancel branch, and error handling.
 // NOT part of `npm test` or CI.
 //
 // Prerequisite: `npm run build` must have produced dist/. Run with:
@@ -32,9 +33,9 @@ window.__exportTest = {
   dialogName: '',
   cancelDialog: false,
   failDialog: false,
-  chosenPath: '/tmp/export_result.pdf',
+  chosenPath: '/tmp/export_result.html',
   savedPath: '',
-  savedBase64: '',
+  savedHtml: '',
 };
 const state = window.__exportTest;
 window.go = { main: { App: {
@@ -50,16 +51,16 @@ window.go = { main: { App: {
   SaveFile: () => Promise.resolve(),
   SaveFileDialog: () => Promise.resolve(''),
   OpenFileDialog: () => Promise.resolve(''),
-  SavePdfFileDialog: (name) => {
+  SaveHtmlFileDialog: (name) => {
     state.dialogCalls++;
     state.dialogName = name;
     if (state.failDialog) return Promise.reject(new Error('native dialog crashed'));
     if (state.cancelDialog) return Promise.resolve('');
     return Promise.resolve(state.chosenPath);
   },
-  SavePdfFile: (path, base64) => {
+  SaveHtmlFile: (path, html) => {
     state.savedPath = path;
-    state.savedBase64 = base64;
+    state.savedHtml = html;
     return Promise.resolve();
   },
   Render: () => Promise.resolve(
@@ -157,7 +158,7 @@ const scenario = `<script>
     const submitBtn = exportDialog.querySelector('button[value="export"]');
     submitBtn.click();
 
-    await waitFor(() => Boolean(state.savedBase64), 10000);
+    await waitFor(() => Boolean(state.savedHtml), 10000);
     await waitFor(() => !exportDialog.open, 5000);
     clearInterval(pollTimer);
 
@@ -172,21 +173,36 @@ const scenario = `<script>
 
     results.push({ name: 'shell-layout-unpolluted', ok: shellUnpolluted });
 
-    const rawPdf = atob(state.savedBase64);
-    const pdfValid =
-      rawPdf.startsWith('%PDF-1.4') &&
-      rawPdf.includes('/Type /Catalog') &&
-      rawPdf.includes('/Type /Pages') &&
-      rawPdf.includes('%%EOF') &&
-      state.savedPath === '/tmp/export_result.pdf' &&
-      state.dialogName === 'test.pdf' &&
+    // Deep structural validation of the exported standalone HTML document.
+    const out = state.savedHtml;
+    const htmlValid =
+      out.startsWith('<!DOCTYPE html>') &&
+      out.includes('<html lang="zh-CN">') &&
+      out.includes('<title>') && out.includes('</title>') &&
+      out.includes('/* mado theme tokens: light */') &&
+      out.includes('cdn.jsdelivr.net/npm/katex@') && out.includes('/dist/katex.min.css') &&
+      out.includes('@page { size: A4; margin: 20mm; }') &&
+      out.includes('print-color-adjust: exact') &&
+      out.includes('-webkit-print-color-adjust: exact') &&
+      out.includes('pre { overflow-x: visible !important; white-space: pre-wrap !important; word-break: break-word !important; }') &&
+      out.includes('.md-line, pre, blockquote, table, img, figure { break-inside: avoid; page-break-inside: avoid; }') &&
+      out.includes('.copy-code-btn { display: none !important; }') &&
+      // Rendered math keeps standard KaTeX semantics (no external-network visual check).
+      out.includes('class="katex"') &&
+      out.includes('katex-html') &&
+      out.includes('aria-hidden="true"') &&
+      out.includes('katex-mathml') &&
+      out.includes('<math') &&
+      out.includes('</math>') &&
+      state.savedPath === '/tmp/export_result.html' &&
+      state.dialogName === 'test.html' &&
       state.themeCssCalls.includes('light') &&
-      statusEl.textContent.includes('已导出为 PDF: export_result.pdf');
+      statusEl.textContent.includes('已导出为 HTML: export_result.html');
 
-    results.push({ name: 'export-success-pdf14', ok: pdfValid });
+    results.push({ name: 'export-success-html', ok: htmlValid });
 
     // 3. User cancel verification: should silently return without error
-    state.savedBase64 = '';
+    state.savedHtml = '';
     state.savedPath = '';
     state.cancelDialog = true;
     exportBtn.click();
@@ -194,7 +210,7 @@ const scenario = `<script>
     submitBtn.click();
 
     await waitFor(() => !submitBtn.disabled, 5000);
-    const cancelOk = (state.savedBase64 === '' && !statusContainer.classList.contains('error'));
+    const cancelOk = (state.savedHtml === '' && !statusContainer.classList.contains('error'));
     results.push({ name: 'export-cancel-silence', ok: cancelOk });
     exportDialog.close();
 

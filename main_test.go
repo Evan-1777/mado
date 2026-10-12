@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -376,37 +375,28 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 	}
 }
 
-func TestSavePdfFile(t *testing.T) {
+func TestSaveHtmlFile(t *testing.T) {
 	app := NewApp()
 	dir := t.TempDir()
 
-	t.Run("valid base64 writes to disk", func(t *testing.T) {
-		target := filepath.Join(dir, "out.pdf")
-		raw := []byte("%PDF-1.4 sample content")
-		encoded := base64.StdEncoding.EncodeToString(raw)
+	t.Run("html text writes to disk", func(t *testing.T) {
+		target := filepath.Join(dir, "out.html")
+		const html = "<!DOCTYPE html><html lang=\"zh-CN\"><body>正文</body></html>"
 
-		if err := app.SavePdfFile(target, encoded); err != nil {
-			t.Fatalf("SavePdfFile: %v", err)
+		if err := app.SaveHtmlFile(target, html); err != nil {
+			t.Fatalf("SaveHtmlFile: %v", err)
 		}
 		got, err := os.ReadFile(target)
 		if err != nil {
 			t.Fatalf("ReadFile: %v", err)
 		}
-		if string(got) != string(raw) {
-			t.Fatalf("got %q, want %q", string(got), string(raw))
-		}
-	})
-
-	t.Run("invalid base64 returns error", func(t *testing.T) {
-		target := filepath.Join(dir, "invalid.pdf")
-		err := app.SavePdfFile(target, "not-valid-base64!@#$")
-		if err == nil {
-			t.Fatal("expected error for invalid base64, got nil")
+		if string(got) != html {
+			t.Fatalf("got %q, want %q", string(got), html)
 		}
 	})
 
 	t.Run("empty path returns error", func(t *testing.T) {
-		err := app.SavePdfFile("", "AAAA")
+		err := app.SaveHtmlFile("", "<html></html>")
 		if err == nil {
 			t.Fatal("expected error for empty path, got nil")
 		}
@@ -444,14 +434,14 @@ func TestGetThemeCSS(t *testing.T) {
 	})
 }
 
-func TestSavePdfFileDialog(t *testing.T) {
+func TestSaveHtmlFileDialog(t *testing.T) {
 	t.Run("dialog error returns error", func(t *testing.T) {
 		app := &App{
 			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
 				return "", errors.New("host dialog error")
 			},
 		}
-		path, err := app.SavePdfFileDialog("doc.pdf")
+		path, err := app.SaveHtmlFileDialog("doc.html")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -466,7 +456,7 @@ func TestSavePdfFileDialog(t *testing.T) {
 				return "", nil
 			},
 		}
-		path, err := app.SavePdfFileDialog("doc.pdf")
+		path, err := app.SaveHtmlFileDialog("doc.html")
 		if err != nil {
 			t.Fatalf("expected nil error on cancel, got %v", err)
 		}
@@ -480,18 +470,18 @@ func TestSavePdfFileDialog(t *testing.T) {
 		app := &App{
 			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
 				capturedName = opts.DefaultFilename
-				return "/home/user/export.pdf", nil
+				return "/home/user/export.html", nil
 			},
 		}
-		path, err := app.SavePdfFileDialog("")
+		path, err := app.SaveHtmlFileDialog("")
 		if err != nil {
-			t.Fatalf("SavePdfFileDialog: %v", err)
+			t.Fatalf("SaveHtmlFileDialog: %v", err)
 		}
-		if path != "/home/user/export.pdf" {
-			t.Fatalf("got path %q, want /home/user/export.pdf", path)
+		if path != "/home/user/export.html" {
+			t.Fatalf("got path %q, want /home/user/export.html", path)
 		}
-		if capturedName != "untitled.pdf" {
-			t.Fatalf("got default filename %q, want untitled.pdf", capturedName)
+		if capturedName != "untitled.html" {
+			t.Fatalf("got default filename %q, want untitled.html", capturedName)
 		}
 	})
 }

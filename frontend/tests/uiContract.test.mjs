@@ -229,14 +229,17 @@ has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
 has(html, 'src="./app.js"', 'bundle asset path');
 
-// ---- pdf export pipeline ----
+// ---- standalone HTML export pipeline ----
 hasNot(baseCss, '@media print', 'retired print media query');
 hasNot(ts, 'allow-modals', 'retired offscreen print iframe sandbox');
 hasNot(ts, '[ExportDiag]', 'no diagnostic probe in ts');
-has(ts, 'SavePdfFileDialog', 'wails SavePdfFileDialog binding');
-has(ts, 'SavePdfFile', 'wails SavePdfFile binding');
+has(ts, 'SaveHtmlFileDialog', 'wails SaveHtmlFileDialog binding');
+has(ts, 'SaveHtmlFile', 'wails SaveHtmlFile binding');
 has(ts, 'GetThemeCSS', 'GetThemeCSS binding for export');
-has(ts, 'exportToPdfData', 'pdfExporter pipeline import');
+has(ts, 'exportToHtmlData', 'htmlExporter pipeline import');
+hasNot(ts, 'SavePdfFileDialog', 'retired SavePdfFileDialog binding');
+hasNot(ts, 'SavePdfFile', 'retired SavePdfFile binding');
+hasNot(ts, 'exportToPdfData', 'retired pdfExporter pipeline import');
 
 // ---- shell markup built in TS ----
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];

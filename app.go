@@ -3,9 +3,7 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -322,18 +320,18 @@ func (a *App) SaveFileDialog() string {
 	return f
 }
 
-// SavePdfFileDialog opens the native save-file dialog for exporting to PDF and
+// SaveHtmlFileDialog opens the native save-file dialog for exporting to HTML and
 // returns the chosen path (empty string when cancelled, error when the dialog
 // fails to open).
-func (a *App) SavePdfFileDialog(defaultFilename string) (string, error) {
+func (a *App) SaveHtmlFileDialog(defaultFilename string) (string, error) {
 	if defaultFilename == "" {
-		defaultFilename = "untitled.pdf"
+		defaultFilename = "untitled.html"
 	}
 	opts := runtime.SaveDialogOptions{
-		Title:           "导出为 PDF",
+		Title:           "导出为 HTML",
 		DefaultFilename: defaultFilename,
 		Filters: []runtime.FileFilter{
-			{DisplayName: "PDF 文档", Pattern: "*.pdf"},
+			{DisplayName: "HTML 文档", Pattern: "*.html;*.htm"},
 		},
 	}
 	if a.saveFileDialog != nil {
@@ -346,15 +344,11 @@ func (a *App) SavePdfFileDialog(defaultFilename string) (string, error) {
 	return f, nil
 }
 
-// SavePdfFile decodes base64-encoded PDF data and writes it atomically to path.
-func (a *App) SavePdfFile(path string, base64Data string) error {
+// SaveHtmlFile writes UTF-8 HTML text atomically to path.
+func (a *App) SaveHtmlFile(path string, content string) error {
 	if path == "" {
-		return errors.New("SavePdfFile: empty path")
+		return errors.New("SaveHtmlFile: empty path")
 	}
-	pdfBytes, err := base64.StdEncoding.DecodeString(base64Data)
-	if err != nil {
-		return fmt.Errorf("SavePdfFile: invalid base64 data: %w", err)
-	}
-	return filesys.WriteFile(path, string(pdfBytes))
+	return filesys.WriteFile(path, content)
 }
 
