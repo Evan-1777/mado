@@ -208,6 +208,7 @@ Rules: no parent channel; no subagents; on blockers call advisor; return executo
 - 任一阶段发现前置条件不满足，须回退至上一阶段重新执行，禁止跳过。
 - 用户未明确要求时，禁止主动创建文档文件（*.md、README 等）。
 - 所有文件操作优先使用专用工具（Read / Write / SearchReplace），避免 RunCommand 执行文件读写。
+- 工作流执行期间以中文简短通报当前阶段与必要信息，保证进度可跟踪；仅通报必要信息，不输出与进度无关的冗余内容；该通报要求在工作流执行期间优先于宿主环境的静默设定。
 </workflow>
 
 <ponytail>
