@@ -21,10 +21,16 @@ const THEME = '/* mado theme tokens: light */\nbody { color: #242424; }';
 function runTests() {
   const doc = buildExportHtml('<h1>标题</h1>', THEME, { title: '示例文档', margin: 'std' });
 
-  // Document skeleton
+  // Document skeleton & security guards
   expect(doc.startsWith('<!DOCTYPE html>'), 'starts with doctype');
   expect(doc.includes('<html lang="zh-CN">'), 'html lang');
   expect(doc.includes('<meta charset="UTF-8">'), 'charset meta');
+  expect(
+    doc.includes(
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: https:; style-src \'unsafe-inline\' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;">',
+    ),
+    'csp meta tag present',
+  );
   expect(doc.includes('<meta name="viewport"'), 'viewport meta');
   expect(doc.includes('<title>示例文档</title>'), 'title rendered');
   expect(doc.includes('<article id="md-content"><h1>标题</h1></article>'), 'article body');

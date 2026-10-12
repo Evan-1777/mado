@@ -1192,7 +1192,8 @@ async function runExport() {
       Render(md),
       exportTheme === 'light' ? GetThemeCSS('light') : cssForTheme(),
     ]);
-    const docTitle = titleEl.textContent || 'untitled';
+    const rawTitle = titleEl.textContent || 'untitled';
+    const docTitle = rawTitle.replace(/\.md$/i, '') || rawTitle;
     const htmlData = await exportToHtmlData(html, baseThemeCss, {
       title: docTitle,
       margin: exportMargin,

@@ -152,6 +152,9 @@ mado/
 - （已随分块栅格化下线而退役）移除 100 页静默截断过度防御——原分块循环严格单调递增，静默截断会无提示丢弃长文档内容；独立 HTML 导出无分页循环，该防御自然消失
 - 收窄 .gitignore 规则至 .codebuddy/*.local.json——确保仓库跟踪的 .codebuddy/agents/* 与 .codebuddy/skills/* 正常纳管与版本追踪，仅忽略本地工作区生成的动态配置
 - 导出核心链路通过 dev-only 无头 Chrome 冒烟用例（export.check.mjs）自动化闭环——在 Linux 开发环境无需 GUI 即可验证弹窗唤起、主题拉取、外壳零污染断言、独立 HTML 真实结构（文档骨架、内嵌主题样式、KaTeX 同源链接、@page 与 @media print 防裁断规则、渲染后的 KaTeX/MathML 语义）、用户取消与异常处理
+- 导出 HTML 采用声明式 CSP 替代预览 iframe sandbox 防线——导出文件脱离应用由外部浏览器打开，缺少 iframe sandbox 隔离；文档头注入 `default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;`，以零运行时开销彻底阻断内联事件处理器与脚本注入，同时收敛外部资源至同源 KaTeX CDN
+- 导出 HTML 声明 print-color-adjust: exact 与暗色主题打印色彩保真权衡——浅色导出保住代码块与标记背景；用户显式选择「当前主题」导出暗色时，完整保留深色背景以防止打印引擎丢弃暗底导致白底浅字不可读。省墨白底打印需求通过导出模态默认的「浅色」选项满足，属已知设计取舍
+- 导出 HTML 文档标题自动剥离 .md 扩展名——窗口标题 notes.md 在导出为独立 HTML 时 <title> 自动规范化为 notes，与默认导出文件名 notes.html 的 base 保持一致
 
 ## 术语
 

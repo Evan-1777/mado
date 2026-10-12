@@ -129,7 +129,7 @@ const scenario = `<script>
 
     results.push({ name: 'modal-open-and-controls', ok: controlsOk });
 
-    // 2. Click export, poll shell layout to verify zero CSS pollution, and verify successful PDF 1.4 generation
+    // 2. Click export, poll shell layout to verify zero CSS pollution, and verify successful standalone HTML generation
     const getBodySnapshot = () => {
       const cs = window.getComputedStyle(document.body);
       return {
@@ -178,7 +178,9 @@ const scenario = `<script>
     const htmlValid =
       out.startsWith('<!DOCTYPE html>') &&
       out.includes('<html lang="zh-CN">') &&
-      out.includes('<title>') && out.includes('</title>') &&
+      out.includes('<meta http-equiv="Content-Security-Policy"') &&
+      out.includes("default-src 'none'") &&
+      out.includes('<title>test</title>') &&
       out.includes('/* mado theme tokens: light */') &&
       out.includes('cdn.jsdelivr.net/npm/katex@') && out.includes('/dist/katex.min.css') &&
       out.includes('@page { size: A4; margin: 20mm; }') &&
