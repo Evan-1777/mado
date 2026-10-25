@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **阶段**：开发中（独立 HTML 导出——浅色/当前主题、标准 20mm/紧凑 10mm/宽松 30mm 打印边距，内嵌完整 Fluent 2 样式表与同源 KaTeX 样式外链，方便通过浏览器或外部工具快速导出为原生高保真 PDF；窗口尺寸与最大化状态记忆；Win32 原生剪贴板历史管道；启动骨架先于编辑器 bundle 显示；Windows 用户级 NSIS 安装/卸载与 WebView2 运行时检查。导出弹窗经 dev-only 无头冒烟全覆盖）
+- **阶段**：开发中（独立 HTML 导出——浅色/当前主题、标准 20mm/紧凑 10mm/宽松 30mm 打印边距，内嵌完整 Fluent 2 样式表与同源 KaTeX 样式外链，方便通过浏览器或外部工具快速导出为原生高保真 PDF；窗口尺寸与最大化状态记忆；Win32 原生剪贴板历史管道；窗口在真实界面与持久主题就绪后显示；Windows 用户级 NSIS 安装/卸载与 WebView2 运行时检查。导出弹窗经 dev-only 无头冒烟全覆盖）
 - **非目标**：多标签页、插件系统、Mermaid 图表（详见 `SCOPE.md` 设计原则）
 
 ## 环境与运行
@@ -33,7 +33,7 @@
 ```
 mado/
 ├─ go.mod / go.sum          # Go 模块依赖（goldmark、wails v2、chroma 等）
-├─ main.go                  # Wails 入口：窗口尺寸与最大化预读、窗口配置与拖放开关
+├─ main.go                  # Wails 入口：窗口尺寸与最大化预读、启动隐藏与主题背景色、窗口配置与拖放开关
 ├─ main_test.go             # 根包测试：配置迁移、启动副作用、并发绑定与关闭一致性
 ├─ app.go                   # App 绑定层：聚合各 internal 模块并导出前端 IPC 方法，读写锁守护状态
 ├─ app_windows.go           # Win32 原生剪贴板管道（绑定前台宿主 HWND 写入，触发 Win+V 剪贴板历史）
@@ -61,7 +61,7 @@ mado/
 ```
 
 - **数据流**：
-  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高与最大化标记，注入 Wails 启动选项并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径。页面先由 `index.html` 渲染静态启动骨架（titlebar/toolbar/pane），head `preload` `app.js`，`load` 后再注入执行；`main.ts` 清空骨架构建真实 UI，并以 `readyState` 分支立即执行 `init`。`init` 并发发起 `GetSettings` 与 `GetStartupFile`，先应用设置再处理启动文件：有文件则 `LoadFile` 并渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。不读 lastfile 且启动只读不创建配置目录。
+  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高、最大化标记与主题，注入 Wails 启动选项（`StartHidden: true`，窗口背景取主题 frame 色）并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径。页面由 `index.html` 常规加载 `app.js`，`main.ts` 构建真实 titlebar/toolbar/pane 与编辑器，并以 `readyState` 分支立即执行 `init`。`init` 并发发起 `GetSettings` 与 `GetStartupFile`，应用设置与主题后等待页面 `load` 再调用 `WindowShow()` 显示窗口，随后才处理启动文件：有文件则 `LoadFile` 并渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。窗口的第一可见帧即完整界面，不经过空壳或黑屏；不读 lastfile 且启动只读不创建配置目录。
   - **编辑与渲染**：CodeMirror 变化由 `renderScheduler` 进行尾随 80ms 节流并配合 Promise 背压合并最新请求 → 并行调用 `Render(md)` 与 `GetCSS()` → 预览更新：首帧用 srcdoc 引导骨架，后续在 iframe 内原地比较并更新 style 文本或 article innerHTML（保留滚动位置）；公式定界符由 Go 解析输出占位元素，在前端父上下文调用 `katex.renderToString` 回填。
   - **偏好持久化**：设置模态内修改主题、换行、公式开关或预览字体（经 `fontCommit` 串行校验）时，前端调用 Go 导出方法；全部通过 `App.persist` 统一执行（在副本上更新，磁盘写入成功才赋回内存快照），保持内存与磁盘强一致。
   - **代码复制与剪贴板**：围栏代码块由包装渲染器输出紧凑复制按钮，iframe 文档 click 委托读取同级 pre 文本后调用 `SetClipboard`，通过 Win32 `GetForegroundWindow` / `OpenClipboard` 写入宿主前台根 HWND，触发 Win+V 剪贴板历史；非 Windows 或异常回退 `ClipboardSetText`。
@@ -156,7 +156,8 @@ mado/
 - 导出 HTML 采用声明式 CSP 替代预览 iframe sandbox 防线——导出文件脱离应用由外部浏览器打开，缺少 iframe sandbox 隔离；文档头注入 `default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;`，以零运行时开销彻底阻断内联事件处理器与脚本注入，同时收敛外部资源至同源 KaTeX CDN
 - 导出 HTML 声明 print-color-adjust: exact 与暗色主题打印色彩保真权衡——浅色导出保住代码块与标记背景；用户显式选择「当前主题」导出暗色时，完整保留深色背景以防止打印引擎丢弃暗底导致白底浅字不可读。省墨白底打印需求通过导出模态默认的「浅色」选项满足，属已知设计取舍
 - 导出 HTML 文档标题自动剥离 .md 扩展名——窗口标题 notes.md 在导出为独立 HTML 时 <title> 自动规范化为 notes，与默认导出文件名 notes.html 的 base 保持一致
-- 2026-10-25 首屏显示采用静态启动骨架 + preload + load 后注入 bundle——Wails v2.14 在 WebView2 navigationCompleted（load）后才显示窗口，同步 bundle 会把窗口可见推迟到脚本执行完；index.html 先渲染 titlebar/toolbar/pane，head 预加载 app.js，load 后注入执行，main.ts 清空骨架并按 readyState 立即 init。实测首屏内容提前约 60–70ms，编辑器就绪不变
+- （已被同日的窗口就绪显示方案取代）2026-10-25 首屏显示曾采用静态启动骨架 + preload + load 后注入 bundle——Wails v2.14 在 WebView2 navigationCompleted（load）后才显示窗口，同步 bundle 会把窗口可见推迟到脚本执行完；骨架方案把首屏内容提前约 60–70ms，但窗口先露出无按钮、无编辑器的空壳，被用户感知为黑屏闪烁
+- 2026-10-25 启动窗口可见性与界面就绪耦合——`StartHidden: true` 保持窗口隐藏，`main.ts` 在真实 UI 构建、持久主题应用且页面 `load` 完成后调用 `WindowShow()`，启动文件在显示后加载；窗口背景色按持久主题取 `--dark-frame` / `--light-frame`。第一可见帧即完整界面，代价是可见时刻从骨架的约 45ms 后移到 bundle + IPC（约 160–200ms，仍优于 420ms 旧基线）
 - 2026-10-25 空文档预览按需渲染——Editor 默认模式下预览不可见，newFile 跳过 Render/GetCSS，仅标记 previewStale 并清空样式缓存；首次切到预览/分栏时同时发起一次 Render 与 GetCSS 补渲染。非空文档与分栏/预览模式仍按原路径渲染
 - 2026-10-25 GetSettings 与 GetStartupFile 并发发起——两个读取互不依赖，并发消除一次串行 IPC；各自保留独立错误回退，避免合并绑定扩大 wailsjs 契约面
 - 2026-10-25 Windows 安装采用 Wails NSIS 的 -installscope user，安装到 %LOCALAPPDATA%\Programs\Mado——安装目录可写，settings.json 继续与 exe 同目录，便携存储模型不变且无需管理员权限；Program Files 机器级安装会破坏配置写入
@@ -173,7 +174,7 @@ mado/
 - **源行号锚点** = Go 渲染期写入顶层块元素的 `data-line`，值为该块在 Markdown 源码中的起始行号（1 起算）；预览侧由 CSS 生成行号栏，两侧点击互跳时作为共同坐标
 - **行号栏（gutter）** = 编辑区 CodeMirror 行号槽与预览区由 `data-line` 生成的数字列，点击后把目标行在对方栏置顶
 - **便携版 / 安装版** = 同一 mado.exe 的两种分发形态；便携版手动放置并沿用 exe 同目录 settings.json，安装版由 NSIS 用户级安装到 %LOCALAPPDATA%\Programs\Mado，卸载时删除程序与偏好数据
-- **启动骨架（boot shell）** = index.html 中先于 app.js 渲染的静态 titlebar/toolbar/pane 外壳，仅复用既有布局 class，由 main.ts 在构建真实 UI 前清空
+- **窗口就绪显示（window ready）** = `StartHidden` 让窗口保持隐藏，`main.ts` 在真实 UI、持久主题与页面 `load` 就绪后调用 `WindowShow()` 显示；第一可见帧即完整界面，不经过启动骨架
 - **previewStale** = 预览内容落后于当前文档的标记；Editor 模式空文档新建时置位，首次切到预览/分栏时触发一次补渲染并清除
 
 ## 维护

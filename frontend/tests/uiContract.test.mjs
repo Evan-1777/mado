@@ -14,6 +14,7 @@ const ts = read('src/main.ts');
 const darkTokens = read('../internal/theme/assets/theme/tokens-dark.css');
 const lightTokens = read('../internal/theme/assets/theme/tokens-light.css');
 const baseCss = read('../internal/theme/assets/theme/base.css');
+const goMain = read('../main.go');
 
 let failures = 0;
 function fail(msg) {
@@ -227,14 +228,10 @@ has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
 has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
-has(html, 'rel="preload" as="script" href="./app.js"', 'bundle preload');
-has(html, 'id="app-bootstrap"', 'deferred bundle loader');
-has(html, "script.src = './app.js'", 'bundle asset path in loader');
-hasNot(html, '<script src="./app.js"></script>', 'synchronous bundle tag');
-has(html, '<header class="titlebar" aria-hidden="true">', 'boot shell titlebar');
-has(html, '<div class="toolbar" aria-hidden="true"></div>', 'boot shell toolbar');
-has(html, '<main class="pane editor-only" aria-hidden="true"></main>', 'boot shell pane');
-has(html, '<div class="drag-zone"><span class="title">Mado</span></div>', 'boot shell title');
+has(html, '<script src="./app.js"></script>', 'synchronous bundle tag');
+hasNot(html, 'id="app-bootstrap"', 'deferred bundle loader retired');
+hasNot(html, 'rel="preload"', 'bundle preload retired');
+hasNot(html, '<header class="titlebar"', 'pre-bundle shell retired');
 
 // ---- standalone HTML export pipeline ----
 hasNot(baseCss, '@media print', 'retired print media query');
@@ -252,7 +249,11 @@ hasNot(ts, 'exportToPdfData', 'retired pdfExporter pipeline import');
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
-has(ts, 'app.replaceChildren();', 'boot shell cleared before building UI');
+// The window is created hidden (Go) and revealed by the frontend once the real
+// UI and persisted theme are ready; both halves of that contract must agree.
+has(goMain, 'StartHidden: true', 'window hidden until the frontend reveals it');
+has(ts, 'WindowShow();', 'window revealed when the interface is ready');
+hasNot(ts, 'app.replaceChildren', 'pre-bundle shell cleanup retired');
 has(ts, "document.readyState === 'loading'", 'init supports both loading and loaded documents');
 has(ts, 'void init();', 'init runs immediately once the bundle executes');
 hasNot(ts, "window.addEventListener('DOMContentLoaded', () => { void init(); });", 'DOMContentLoaded as the only init path');

@@ -34,7 +34,7 @@ window.go = { main: { App: {
   SetMath: () => Promise.resolve(), SetPreviewFont: () => Promise.resolve(), SetTitle: () => Promise.resolve(),
 } } };
 window.runtime = { WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
-  WindowIsMaximised: () => Promise.resolve(false), WindowSetTitle(){}, EventsOn(){}, OnFileDrop(){},
+  WindowIsMaximised: () => Promise.resolve(false), WindowSetTitle(){}, WindowShow(){}, EventsOn(){}, OnFileDrop(){},
   WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){}, WindowOnThemeChanged(){},
   EventsOff(){}, EventsOffAll(){}, EventsOnce(){}, EventsEmit(){}, WindowReload(){}, WindowReloadApp(){} };
 </script>`;
@@ -49,8 +49,8 @@ const scenario = `<script>
   try {
     let frame;
     for (let i = 0; i < 400; i++) {
-      // The iframe does not exist until the bundle replaces the boot shell, so
-      // re-query it inside the wait loop.
+      // The iframe does not exist until the bundle builds the UI, so re-query
+      // it inside the wait loop.
       frame = document.getElementById('preview');
       const fr = frame && frame.contentDocument;
       if (document.querySelector('.cm-content') && fr && fr.getElementById('md-content') && fr.querySelector('[data-line]')) break;
@@ -122,7 +122,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
+html = html.replace('<script src="./app.js"></script>', stubs + scenario + '<script src="./app.js"></script>');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

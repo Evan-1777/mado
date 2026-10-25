@@ -39,6 +39,10 @@ window.__startup = {
   settingsDone: 0,
   startupStart: 0,
   startupDone: 0,
+  showCalls: 0,
+  showAt: 0,
+  editorAtShow: false,
+  themeAtShow: '',
 };
 const state = window.__startup;
 const delay = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 20));
@@ -87,6 +91,12 @@ window.runtime = {
   WindowIsMaximised: () => Promise.resolve(false),
   WindowGetSize: () => Promise.resolve({ w: 1280, h: 800 }),
   WindowSetTitle(){},
+  WindowShow(){
+    state.showCalls++;
+    state.showAt = performance.now();
+    state.editorAtShow = Boolean(document.querySelector('.cm-editor'));
+    state.themeAtShow = document.documentElement.dataset.theme;
+  },
   EventsOn(){}, OnFileDrop(callback){ state.onDrop = callback; },
   ClipboardSetText(text){ state.clip = text; return Promise.resolve(true); },
   WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
@@ -107,11 +117,6 @@ const scenario = `<script>
     }
   };
   const results = [];
-  // This script is injected before #app-bootstrap, so the static shell must
-  // already be in the DOM while the editor bundle has not run yet.
-  const bootShellBeforeBundle = Boolean(document.querySelector('.titlebar')) &&
-    !document.querySelector('.cm-editor');
-  results.push({ name: 'boot-shell-before-bundle', ok: bootShellBeforeBundle });
   let stage = 'initial';
   const report = (txt) => {
     const pre = document.createElement('pre');
@@ -138,6 +143,12 @@ const scenario = `<script>
     });
     if (!editorAt) editorAt = performance.now();
     if (!previewAt) previewAt = performance.now();
+    await waitFor(() => state.showCalls === 1);
+    results.push({
+      name: 'window-show-ready',
+      ok: state.showCalls === 1 && state.showAt >= state.settingsDone &&
+        state.editorAtShow && state.themeAtShow === 'dark',
+    });
 
     results.push({
       name: 'initial-single-render',
@@ -340,7 +351,7 @@ const scenario = `<script>
     const fmt = (value) => Number.isFinite(value) ? value.toFixed(1) : 'n/a';
     const timings = 'timings fcp=' + fmt(fcp) +
       ' app=' + fmt(appResource?.startTime) + '-' + fmt(appResource?.responseEnd) +
-      ' editor=' + fmt(editorAt) + ' preview=' + fmt(previewAt);
+      ' show=' + fmt(state.showAt) + ' editor=' + fmt(editorAt) + ' preview=' + fmt(previewAt);
     report(results.map((result) => result.name + ': ' + (result.ok ? 'PASS' : 'FAIL')).join(' | ') +
       (results.every((result) => result.ok) ? ' => ALL PASS' : ' => FAIL') + ' | ' + timings);
   } catch (err) {
@@ -358,7 +369,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
+html = html.replace('<script src="./app.js"></script>', stubs + scenario + '<script src="./app.js"></script>');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

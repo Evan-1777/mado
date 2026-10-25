@@ -35,6 +35,14 @@ func main() {
 		startState = options.Maximised
 	}
 
+	// Match the window surface to the saved theme so a frame WebView2 has not
+	// covered yet uses the app frame colour instead of near-black.
+	// Linked: --dark-frame / --light-frame in frontend/src/style.css
+	background := &options.RGBA{R: 32, G: 32, B: 32, A: 1}
+	if s.Theme == "light" {
+		background = &options.RGBA{R: 243, G: 243, B: 243, A: 1}
+	}
+
 	err := wails.Run(&options.App{
 		Title:            "Mado",
 		Width:            s.WindowWidth,
@@ -42,11 +50,15 @@ func main() {
 		MinWidth:         settings.MinWindowWidth,
 		MinHeight:        settings.MinWindowHeight,
 		WindowStartState: startState,
-		Frameless:        true,
+		// The window stays hidden until the frontend has built the real UI and
+		// applied the persisted theme; showing it earlier exposes the empty
+		// dark WebView2 surface as a startup flash.
+		StartHidden: true,
+		Frameless:   true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 15, G: 17, B: 23, A: 1},
+		BackgroundColour: background,
 		OnStartup:        app.startup,
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			// Clean state or an already-confirmed quit closes directly; a dirty

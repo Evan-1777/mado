@@ -12,7 +12,7 @@ import {
   ForceQuit, GetStartupFile, SaveFileDialog, SaveHtmlFileDialog, SaveHtmlFile, OpenFileDialog, SetWrap, SetMath, SetPreviewFont,
   SetClipboard, SetWindowSize, SetWindowMaximized,
 } from '../wailsjs/go/main/App';
-import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowGetSize, WindowSetTitle, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
+import { WindowMinimise, WindowMaximise, WindowUnmaximise, WindowIsMaximised, WindowGetSize, WindowSetTitle, WindowShow, OnFileDrop, EventsOn, ClipboardSetText } from '../wailsjs/runtime/runtime';
 import { createFontCommitter } from './fontCommit';
 import { pickBlockIndex } from './gutter';
 import { flattenToc, parseToc, restoreTocExpansion, type TocNode } from './toc';
@@ -62,7 +62,6 @@ let previewStale = true;  // preview skipped while hidden, needs a render on act
 // ---------------------------------------------------------------- dom refs
 
 const app = document.getElementById('app')!;
-app.replaceChildren(); // drop the static boot shell before building the real UI
 
 // ---------------------------------------------------------------- build UI
 
@@ -1427,6 +1426,14 @@ try {
 async function init() {
   setupResizeController();
   void syncMaximisedState();
+  // The window is created hidden (StartHidden). Wait for the document to load
+  // before revealing it so the first visible frame is the finished UI, never a
+  // blank WebView2 surface or the pre-bundle shell.
+  const pageLoaded = document.readyState === 'complete'
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+      window.addEventListener('load', () => resolve(), { once: true });
+    });
   // Both reads are independent; start them together so window setup does not
   // serialize behind the startup-file lookup.
   const settingsPromise = Promise.resolve().then(() => GetSettings());
@@ -1448,6 +1455,10 @@ async function init() {
     currentPreviewFont = DEFAULT_PREVIEW_FONT;
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
   }
+  // The UI and the persisted theme are ready: reveal the window before reading
+  // the startup file so opening a file cannot delay the window's appearance.
+  await pageLoaded;
+  WindowShow();
   try {
     // Windows file-association launch ("Open with") passes the document on
     // the command line. Without one, start on a blank untitled document.
@@ -1470,7 +1481,7 @@ async function init() {
   cm.focus();
 }
 
-// The bundle is injected after load, but keep the loading branch for direct
+// The bundle runs as the last body script; keep the loading branch for direct
 // execution (dev server, manual injection) where the document is still parsing.
 if (document.readyState === 'loading') {
   window.addEventListener('DOMContentLoaded', () => { void init(); }, { once: true });

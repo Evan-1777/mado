@@ -80,7 +80,7 @@ window.runtime = {
   WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
   WindowIsMaximised: () => Promise.resolve(false),
   WindowGetSize: () => Promise.resolve({ w: 1280, h: 800 }),
-  WindowSetTitle(){}, EventsOn(){}, OnFileDrop(){},
+  WindowSetTitle(){}, WindowShow(){}, EventsOn(){}, OnFileDrop(){},
   ClipboardSetText(){ return Promise.resolve(true); },
   WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
   WindowOnThemeChanged(){}, EventsOff(){}, EventsOffAll(){}, EventsOnce(){},
@@ -242,7 +242,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
+html = html.replace('<script src="./app.js"></script>', stubs + scenario + '<script src="./app.js"></script>');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
