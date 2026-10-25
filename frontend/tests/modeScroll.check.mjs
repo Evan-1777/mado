@@ -47,12 +47,16 @@ const scenario = `<script>
   pre.id = 'modescroll-result';
   const report = (txt) => { pre.textContent = 'MODESCROLL ' + txt; document.body.appendChild(pre); };
   try {
-    const frame = document.getElementById('preview');
+    let frame;
     for (let i = 0; i < 400; i++) {
+      // The iframe does not exist until the bundle replaces the boot shell, so
+      // re-query it inside the wait loop.
+      frame = document.getElementById('preview');
       const fr = frame && frame.contentDocument;
       if (document.querySelector('.cm-content') && fr && fr.getElementById('md-content') && fr.querySelector('[data-line]')) break;
       await wait(25);
     }
+    if (!frame?.contentDocument?.scrollingElement) throw new Error('preview iframe never became ready');
     const se = frame.contentDocument.scrollingElement;
 
     async function cycle(name, fromMode, awayMode, backMode) {
@@ -118,7 +122,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script src="./app.js"></script>', stubs + '<script src="./app.js"></script>' + scenario);
+html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

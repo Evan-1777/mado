@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：本地运行的 Windows 原生 Markdown 查看器/编辑器，轻量低占用，编辑与渲染分离，默认支持 HTML 渲染。
-- **阶段**：开发中（独立 HTML 导出——浅色/当前主题、标准 20mm/紧凑 10mm/宽松 30mm 打印边距，内嵌完整 Fluent 2 样式表与同源 KaTeX 样式外链，方便通过浏览器或外部工具快速导出为原生高保真 PDF；窗口尺寸与最大化状态记忆；Win32 原生剪贴板历史管道。导出弹窗经 dev-only 无头冒烟全覆盖）
+- **阶段**：开发中（独立 HTML 导出——浅色/当前主题、标准 20mm/紧凑 10mm/宽松 30mm 打印边距，内嵌完整 Fluent 2 样式表与同源 KaTeX 样式外链，方便通过浏览器或外部工具快速导出为原生高保真 PDF；窗口尺寸与最大化状态记忆；Win32 原生剪贴板历史管道；启动骨架先于编辑器 bundle 显示；Windows 用户级 NSIS 安装/卸载与 WebView2 运行时检查。导出弹窗经 dev-only 无头冒烟全覆盖）
 - **非目标**：多标签页、插件系统、Mermaid 图表（详见 `SCOPE.md` 设计原则）
 
 ## 环境与运行
@@ -20,9 +20,9 @@
     2. 零产物语法检查：`node_modules/.bin/esbuild src/main.ts --bundle --loader:.css=empty`
     3. `npm run build`（esbuild 打包后调用 `npm run copy-assets`）产出 `dist/`（go:embed 依赖）
     4. `go vet ./...` + `go test ./...`
-  - 云端 CI：`.github/workflows/build.yml`（Windows 构建，`wails build` 输出 `build/bin/mado.exe` artifact）；发布流程见 `.github/workflows/release.yml`（tag `v*` 触发创建 Release）
-- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler、htmlExporter 与 uiContract 6 项自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/modeScroll.check.mjs`、`node tests/startup.check.mjs` 与 `node tests/export.check.mjs`（不接入 npm test/CI）；交互行为手动验收
-- ★ 路径含空格或中文时加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅为旧配置的一次性迁移源目录，应用不再向其写入
+  - 云端 CI：`.github/workflows/build.yml`（Windows 构建，安装 NSIS 后执行 `wails build -nsis -installscope user`，输出 `build/bin/mado.exe` 与 `build/bin/mado-amd64-installer.exe` artifact；构建后在 runner 上静默安装、校验文件与 HKCU 卸载项、静默卸载并确认目录/快捷方式/注册表清理）；发布流程见 `.github/workflows/release.yml`（tag `v*` 触发，从 tag 注入 `info.productVersion` 后构建并同时发布便携 exe 与安装器）
+- **测试**：`go test ./...`（覆盖根包/filesys/mdrender/settings/theme 5 个包）；并发与竞态验证使用 `go test -race ./...`；零依赖前端自检 `cd frontend && npm test`（依次执行 fontCommit、gutter、tocGutter、renderScheduler、htmlExporter 与 uiContract 6 项自检，Node 原生 type-stripping，无外部测试框架）；dev-only 无头检查 `npm run build && node tests/startup.check.mjs`、`node tests/modeScroll.check.mjs` 与 `node tests/export.check.mjs`（不接入 npm test/CI；按 SCOPE 优先连接用户提供的 9222 远程 Chrome，实例不可用时使用带独立 profile 的本地 headless 包装器）；交互行为手动验收
+- ★ 路径含空格或中文时加引号；`settings.json` 持久化于 exe 所在目录（便携化），`%APPDATA%/Mado/` 仅为旧配置的一次性迁移源目录，应用不再向其写入；安装版位于 `%LOCALAPPDATA%\Programs\Mado`，目录可写，继续沿用同一存储模型
 - ★ 本开发环境 `NODE_ENV=production` 且 `omit=dev`，安装依赖必须执行 `npm install --include=dev`，否则 esbuild 会被静默跳过
 - ★ 零产物语法检查必须带 `--loader:.css=empty`，否则 `import './style.css'` 会直接报错；禁止使用 `--outfile=/dev/null` 导致在工作区遗留字面文件 `nul.css`
 - ★ `frontend/dist/` 是 go:embed 的 FS 根，HTML 内引用资源必须写相对路径 `./app.js`/`./app.css` 而非 `./dist/app.js`；构建产物禁止提交 git
@@ -55,12 +55,13 @@ mado/
 │  └─ tests/                # Node 原生自检（含 htmlExporter.test.ts）与无头浏览器检查
 ├─ frontend/wailsjs/        # Wails 生成的前端绑定（仓库跟踪副本供本地 esbuild 语法检查，新增 Go 导出方法须同步手补）
 ├─ frontend/dist/           # 前端构建产物（go:embed 嵌入 exe，FS 根目录，gitignored）
-├─ build/bin/mado.exe       # Windows 最终打包二进制产物（云端 CI 产物）
+├─ build/windows/installer/project.nsi # 受跟踪的简体中文 NSIS 模板（固定 Mado 卸载键名，用户级安装）
+├─ build/bin/mado.exe / mado-amd64-installer.exe # Windows 便携 exe 与安装器（云端 CI 产物，gitignored）
 └─ docs/                    # 用户相关说明文档
 ```
 
 - **数据流**：
-  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高与最大化标记，注入 Wails 启动选项并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径（若有路径则 `LoadFile`，无路径直接走 `newFile()` 空白态，不读 lastfile 且启动只读不创建配置目录）。
+  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高与最大化标记，注入 Wails 启动选项并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径。页面先由 `index.html` 渲染静态启动骨架（titlebar/toolbar/pane），head `preload` `app.js`，`load` 后再注入执行；`main.ts` 清空骨架构建真实 UI，并以 `readyState` 分支立即执行 `init`。`init` 并发发起 `GetSettings` 与 `GetStartupFile`，先应用设置再处理启动文件：有文件则 `LoadFile` 并渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。不读 lastfile 且启动只读不创建配置目录。
   - **编辑与渲染**：CodeMirror 变化由 `renderScheduler` 进行尾随 80ms 节流并配合 Promise 背压合并最新请求 → 并行调用 `Render(md)` 与 `GetCSS()` → 预览更新：首帧用 srcdoc 引导骨架，后续在 iframe 内原地比较并更新 style 文本或 article innerHTML（保留滚动位置）；公式定界符由 Go 解析输出占位元素，在前端父上下文调用 `katex.renderToString` 回填。
   - **偏好持久化**：设置模态内修改主题、换行、公式开关或预览字体（经 `fontCommit` 串行校验）时，前端调用 Go 导出方法；全部通过 `App.persist` 统一执行（在副本上更新，磁盘写入成功才赋回内存快照），保持内存与磁盘强一致。
   - **代码复制与剪贴板**：围栏代码块由包装渲染器输出紧凑复制按钮，iframe 文档 click 委托读取同级 pre 文本后调用 `SetClipboard`，通过 Win32 `GetForegroundWindow` / `OpenClipboard` 写入宿主前台根 HWND，触发 Win+V 剪贴板历史；非 Windows 或异常回退 `ClipboardSetText`。
@@ -155,6 +156,14 @@ mado/
 - 导出 HTML 采用声明式 CSP 替代预览 iframe sandbox 防线——导出文件脱离应用由外部浏览器打开，缺少 iframe sandbox 隔离；文档头注入 `default-src 'none'; img-src data: https:; style-src 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;`，以零运行时开销彻底阻断内联事件处理器与脚本注入，同时收敛外部资源至同源 KaTeX CDN
 - 导出 HTML 声明 print-color-adjust: exact 与暗色主题打印色彩保真权衡——浅色导出保住代码块与标记背景；用户显式选择「当前主题」导出暗色时，完整保留深色背景以防止打印引擎丢弃暗底导致白底浅字不可读。省墨白底打印需求通过导出模态默认的「浅色」选项满足，属已知设计取舍
 - 导出 HTML 文档标题自动剥离 .md 扩展名——窗口标题 notes.md 在导出为独立 HTML 时 <title> 自动规范化为 notes，与默认导出文件名 notes.html 的 base 保持一致
+- 2026-10-25 首屏显示采用静态启动骨架 + preload + load 后注入 bundle——Wails v2.14 在 WebView2 navigationCompleted（load）后才显示窗口，同步 bundle 会把窗口可见推迟到脚本执行完；index.html 先渲染 titlebar/toolbar/pane，head 预加载 app.js，load 后注入执行，main.ts 清空骨架并按 readyState 立即 init。实测首屏内容提前约 60–70ms，编辑器就绪不变
+- 2026-10-25 空文档预览按需渲染——Editor 默认模式下预览不可见，newFile 跳过 Render/GetCSS，仅标记 previewStale 并清空样式缓存；首次切到预览/分栏时同时发起一次 Render 与 GetCSS 补渲染。非空文档与分栏/预览模式仍按原路径渲染
+- 2026-10-25 GetSettings 与 GetStartupFile 并发发起——两个读取互不依赖，并发消除一次串行 IPC；各自保留独立错误回退，避免合并绑定扩大 wailsjs 契约面
+- 2026-10-25 Windows 安装采用 Wails NSIS 的 -installscope user，安装到 %LOCALAPPDATA%\Programs\Mado——安装目录可写，settings.json 继续与 exe 同目录，便携存储模型不变且无需管理员权限；Program Files 机器级安装会破坏配置写入
+- 2026-10-25 安装器使用受跟踪的 build/windows/installer/project.nsi，简体中文界面并固定 UNINST_KEY_NAME "Mado"——用户可见语言与项目一致，Add/Remove Programs 卸载键稳定；其余 build/ 资产仍由 Wails 生成并忽略，升级 Wails 时以 diff 复核模板
+- 2026-10-25 卸载删除 settings.json、安装目录、WebView2 用户数据、开始菜单/桌面快捷方式与 HKCU 卸载项——偏好不是用户文档，卸载后不留残留；不注册 .md/.markdown 文件关联或协议，不在安装期启动应用预热 WebView2（副作用不可控且属系统侧成本）
+- 2026-10-25 保持单编辑器 bundle，不拆 KaTeX——去掉 KaTeX 的对照仅提前约 15–20ms，双 bundle/动态导入会扩大加载时序、导出路径与全局契约的维护面
+- 2026-10-25 发布时由 tag/手输版本注入 wails.json info.productVersion，并同时发布便携 exe 与安装器——版本元数据与 tag 一致，Release 不再只有单一 exe；构建 CI 在 Windows runner 上静默安装/卸载并断言文件、快捷方式与 HKCU 卸载项，安装器行为由真实 NSIS 执行验收
 
 ## 术语
 
@@ -163,6 +172,9 @@ mado/
 - **公式通道** = Go 侧 math 扩展解析定界符输出带 `data-tex` 占位元素 → 前端父上下文 KaTeX `renderToString` 渲染 → 回填预览帧 DOM 的渲染管线
 - **源行号锚点** = Go 渲染期写入顶层块元素的 `data-line`，值为该块在 Markdown 源码中的起始行号（1 起算）；预览侧由 CSS 生成行号栏，两侧点击互跳时作为共同坐标
 - **行号栏（gutter）** = 编辑区 CodeMirror 行号槽与预览区由 `data-line` 生成的数字列，点击后把目标行在对方栏置顶
+- **便携版 / 安装版** = 同一 mado.exe 的两种分发形态；便携版手动放置并沿用 exe 同目录 settings.json，安装版由 NSIS 用户级安装到 %LOCALAPPDATA%\Programs\Mado，卸载时删除程序与偏好数据
+- **启动骨架（boot shell）** = index.html 中先于 app.js 渲染的静态 titlebar/toolbar/pane 外壳，仅复用既有布局 class，由 main.ts 在构建真实 UI 前清空
+- **previewStale** = 预览内容落后于当前文档的标记；Editor 模式空文档新建时置位，首次切到预览/分栏时触发一次补渲染并清除
 
 ## 维护
 

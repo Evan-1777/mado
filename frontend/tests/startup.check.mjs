@@ -35,13 +35,30 @@ window.__startup = {
   openPath: 'cancel.md',
   rejectLoad: false,
   onDrop: null,
+  settingsStart: 0,
+  settingsDone: 0,
+  startupStart: 0,
+  startupDone: 0,
 };
 const state = window.__startup;
+const delay = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 20));
 window.go = { main: { App: {
   ForceQuit: () => Promise.resolve(),
   GetCSS: () => { state.cssCalls++; return Promise.resolve('body { color: red; }'); },
-  GetSettings: () => Promise.resolve({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code' }),
-  GetStartupFile: () => Promise.resolve('startup.md'),
+  GetSettings: () => {
+    state.settingsStart = performance.now();
+    return delay({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code' }).then((value) => {
+      state.settingsDone = performance.now();
+      return value;
+    });
+  },
+  GetStartupFile: () => {
+    state.startupStart = performance.now();
+    return delay('startup.md').then((value) => {
+      state.startupDone = performance.now();
+      return value;
+    });
+  },
   LoadFile: (path) => {
     state.loadCalls++;
     state.loadPaths.push(path);
@@ -90,6 +107,11 @@ const scenario = `<script>
     }
   };
   const results = [];
+  // This script is injected before #app-bootstrap, so the static shell must
+  // already be in the DOM while the editor bundle has not run yet.
+  const bootShellBeforeBundle = Boolean(document.querySelector('.titlebar')) &&
+    !document.querySelector('.cm-editor');
+  results.push({ name: 'boot-shell-before-bundle', ok: bootShellBeforeBundle });
   let stage = 'initial';
   const report = (txt) => {
     const pre = document.createElement('pre');
@@ -98,15 +120,36 @@ const scenario = `<script>
     document.body.appendChild(pre);
   };
   try {
-    await waitFor(() => state.renderInputs.length === 1 && state.cssCalls === 1);
-    await waitFor(() => document.querySelector('.cm-content') &&
-      document.getElementById('preview')?.contentDocument?.getElementById('md-content'));
+    let editorAt = 0;
+    let previewAt = 0;
+    await waitFor(() => {
+      if (!editorAt && document.querySelector('.cm-content')) editorAt = performance.now();
+      if (!previewAt && document.getElementById('preview')?.contentDocument?.getElementById('md-content')) {
+        previewAt = performance.now();
+      }
+      return state.renderInputs.length === 1 && state.cssCalls === 1;
+    });
+    await waitFor(() => {
+      if (!previewAt && document.getElementById('preview')?.contentDocument?.getElementById('md-content')) {
+        previewAt = performance.now();
+      }
+      return Boolean(document.querySelector('.cm-content') &&
+        document.getElementById('preview')?.contentDocument?.getElementById('md-content'));
+    });
+    if (!editorAt) editorAt = performance.now();
+    if (!previewAt) previewAt = performance.now();
 
     results.push({
       name: 'initial-single-render',
       ok: state.renderInputs.length === 1 &&
         state.renderInputs[0] === ${JSON.stringify(startupDoc)} &&
         state.cssCalls === 1 && !state.dirtyCalls.includes(true),
+    });
+    results.push({
+      name: 'startup-ipc-overlap',
+      ok: state.settingsStart > 0 && state.startupStart > 0 &&
+        Math.abs(state.startupStart - state.settingsStart) < 5 &&
+        Math.max(state.settingsStart, state.startupStart) < Math.min(state.settingsDone, state.startupDone),
     });
 
     const frame = document.getElementById('preview');
@@ -264,8 +307,42 @@ const scenario = `<script>
       ok: darkSelectionOk && selectionColor() === 'rgb(191, 219, 254)',
     });
 
+    // Empty new document in Editor mode must not fetch a hidden preview. The
+    // first activation then renders and fetches CSS exactly once.
+    const rendersBeforeNew = state.renderInputs.length;
+    const cssBeforeNew = state.cssCalls;
+    stage = 'empty-new-no-render';
+    document.getElementById('btn-new').click();
+    await waitFor(() => document.getElementById('close-dialog')?.open);
+    document.querySelector('#close-dialog button[value="no"]').click();
+    await waitFor(() => !document.getElementById('close-dialog')?.open);
+    await wait(150);
+    results.push({
+      name: 'empty-new-no-render',
+      ok: state.renderInputs.length === rendersBeforeNew &&
+        state.cssCalls === cssBeforeNew &&
+        document.getElementById('status-text')?.textContent === '就绪' &&
+        document.getElementById('toc-tree')?.children.length === 0,
+    });
+    stage = 'preview-activation-render';
+    document.querySelector('.seg button[data-mode="preview"]').click();
+    await waitFor(() => state.renderInputs.length === rendersBeforeNew + 1);
+    await wait(150);
+    results.push({
+      name: 'preview-activation-render',
+      ok: state.renderInputs.length === rendersBeforeNew + 1 &&
+        state.renderInputs.at(-1) === '' &&
+        state.cssCalls === cssBeforeNew + 1,
+    });
+
+    const fcp = performance.getEntriesByName('first-contentful-paint')[0]?.startTime;
+    const appResource = performance.getEntriesByType('resource').find((entry) => entry.name.endsWith('/app.js'));
+    const fmt = (value) => Number.isFinite(value) ? value.toFixed(1) : 'n/a';
+    const timings = 'timings fcp=' + fmt(fcp) +
+      ' app=' + fmt(appResource?.startTime) + '-' + fmt(appResource?.responseEnd) +
+      ' editor=' + fmt(editorAt) + ' preview=' + fmt(previewAt);
     report(results.map((result) => result.name + ': ' + (result.ok ? 'PASS' : 'FAIL')).join(' | ') +
-      (results.every((result) => result.ok) ? ' => ALL PASS' : ' => FAIL'));
+      (results.every((result) => result.ok) ? ' => ALL PASS' : ' => FAIL') + ' | ' + timings);
   } catch (err) {
     report('ERROR: ' + (err && err.message) +
       ' stage=' + stage +
@@ -281,7 +358,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script src="./app.js"></script>', stubs + '<script src="./app.js"></script>' + scenario);
+html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

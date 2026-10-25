@@ -57,10 +57,12 @@ let previewCss = '';           // cached preview stylesheet for current theme
 let lastWrittenHtml = '';
 let lastWrittenCss = '';
 let isLoading = false;
+let previewStale = true;  // preview skipped while hidden, needs a render on activation
 
 // ---------------------------------------------------------------- dom refs
 
 const app = document.getElementById('app')!;
+app.replaceChildren(); // drop the static boot shell before building the real UI
 
 // ---------------------------------------------------------------- build UI
 
@@ -561,6 +563,7 @@ async function refreshPreview() {
     previewCss = css;
     writePreview(html);
     updateToc(md);
+    previewStale = false;
     if (statusContainer.classList.contains('error')) return;
     statusEl.textContent = dirty ? '未保存' : '就绪';
     statusContainer.classList.toggle('unsaved', dirty);
@@ -976,7 +979,16 @@ async function newFile() {
   statusEl.textContent = '就绪';
   statusContainer.classList.add('stealth');
   statusContainer.classList.remove('error', 'unsaved');
-  await refreshPreview();
+  if (isPreviewVisible()) {
+    await refreshPreview();
+  } else {
+    // Editor-only: there is nothing to paint, so keep the preview unmounted and
+    // render it exactly once when the preview column first becomes visible.
+    previewStale = true;
+    previewCss = ''; // first visible preview refreshes CSS together with content
+    previewEmpty.hidden = false;
+    renderToc();
+  }
 }
 
 async function confirmDiscard(): Promise<boolean> {
@@ -1371,6 +1383,10 @@ toolbar.querySelectorAll('.seg button').forEach((btn) => {
       savedPreviewScroll = undefined;
     }
     syncGutterVisibility();
+    if (isPreviewVisible() && previewStale) {
+      renderScheduler.cancel();
+      void refreshPreview();
+    }
     // The editor column is display:none in preview mode. Showing it again
     // invalidates CodeMirror's viewport measurement, and it only picks that
     // up through async observers (with up to 75ms debounce). Measure synchronously
@@ -1411,8 +1427,12 @@ try {
 async function init() {
   setupResizeController();
   void syncMaximisedState();
+  // Both reads are independent; start them together so window setup does not
+  // serialize behind the startup-file lookup.
+  const settingsPromise = Promise.resolve().then(() => GetSettings());
+  const startupFilePromise = Promise.resolve().then(() => GetStartupFile()).catch(() => '');
   try {
-    const s = await GetSettings();
+    const s = await settingsPromise;
     if (s.WindowWidth && s.WindowWidth >= MIN_WINDOW_WIDTH) lastNormalWidth = s.WindowWidth;
     if (s.WindowHeight && s.WindowHeight >= MIN_WINDOW_HEIGHT) lastNormalHeight = s.WindowHeight;
     applyTheme(s.Theme === 'light' ? 'light' : 'dark', false);
@@ -1431,12 +1451,7 @@ async function init() {
   try {
     // Windows file-association launch ("Open with") passes the document on
     // the command line. Without one, start on a blank untitled document.
-    let path = '';
-    try {
-      path = await GetStartupFile();
-    } catch {
-      path = '';
-    }
+    const path = await startupFilePromise;
     if (path) {
       const content = await LoadFile(path);
       await loadContent(path, content);
@@ -1455,5 +1470,11 @@ async function init() {
   cm.focus();
 }
 
-window.addEventListener('DOMContentLoaded', () => { void init(); });
+// The bundle is injected after load, but keep the loading branch for direct
+// execution (dev server, manual injection) where the document is still parsing.
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => { void init(); }, { once: true });
+} else {
+  void init();
+}
 

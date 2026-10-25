@@ -10,5 +10,12 @@
   "author": {
     "name": "Mado",
     "email": ""
+  },
+  "info": {
+    "companyName": "Mado",
+    "productName": "Mado",
+    "productVersion": "0.0.0",
+    "copyright": "Copyright 2026 Mado",
+    "comments": "Mado Markdown editor"
   }
 }

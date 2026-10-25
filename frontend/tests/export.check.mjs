@@ -242,7 +242,7 @@ const scenario = `<script>
 </script>`;
 
 let html = fs.readFileSync(HTML, 'utf8');
-html = html.replace('<script src="./app.js"></script>', stubs + '<script src="./app.js"></script>' + scenario);
+html = html.replace('<script id="app-bootstrap">', stubs + scenario + '<script id="app-bootstrap">');
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];

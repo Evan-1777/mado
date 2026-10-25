@@ -32,6 +32,12 @@ jobs:
         env:
           CGO_ENABLED: 0
 
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files (x86)\NSIS'
+
       - name: Build frontend (dist/ required by go:embed)
         working-directory: frontend
         run: npm ci && npm run build
@@ -40,12 +46,73 @@ jobs:
         run: go test ./...
 
       - name: Build
-        run: wails build
+        run: wails build -nsis -installscope user
         env:
           GOFLAGS: -buildvcs=false
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'build/bin/mado-amd64-installer.exe')) {
+            throw 'NSIS installer was not produced'
+          }
+
+      - name: Verify install and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $PWD 'build/bin/mado-amd64-installer.exe'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Mado'
+          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Mado'
+          $startMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Mado.lnk'
+          $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mado.lnk'
+
+          function Wait-For([scriptblock]$Condition, [string]$Label) {
+            $deadline = (Get-Date).AddSeconds(15)
+            while ((Get-Date) -lt $deadline) {
+              if (& $Condition) { return }
+              Start-Sleep -Milliseconds 500
+            }
+            throw "Timed out waiting for $Label"
+          }
+
+          try {
+            $install = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+            if ($install.ExitCode -ne 0) { throw "installer exited with $($install.ExitCode)" }
+            Wait-For { (Test-Path (Join-Path $dir 'mado.exe')) -and (Test-Path (Join-Path $dir 'uninstall.exe')) } 'installed files'
+            Wait-For { Test-Path $uninstallKey } 'uninstall registry entry'
+
+            $entry = Get-ItemProperty $uninstallKey
+            if ($entry.DisplayName -ne 'Mado') { throw "unexpected DisplayName: $($entry.DisplayName)" }
+
+            $uninstall = Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S' -Wait -PassThru
+            if ($uninstall.ExitCode -ne 0) { throw "uninstaller exited with $($uninstall.ExitCode)" }
+            Wait-For { -not (Test-Path $dir) } 'install directory removal'
+            Wait-For { -not (Test-Path $uninstallKey) } 'uninstall registry removal'
+            foreach ($shortcut in @($startMenuShortcut, $desktopShortcut)) {
+              if (Test-Path $shortcut) { throw "shortcut left behind: $shortcut" }
+            }
+          } catch {
+            Write-Host 'Install directory:'
+            if (Test-Path $dir) { Get-ChildItem $dir -Force | Format-Table Name, Length, LastWriteTime }
+            Write-Host 'Uninstall entries:'
+            Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+              ForEach-Object { Get-ItemProperty $_.PSPath } |
+              Where-Object { $_.DisplayName -like '*Mado*' } |
+              Format-List DisplayName, DisplayVersion, UninstallString
+            throw
+          } finally {
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+            if (Test-Path $uninstallKey) { Remove-Item -Recurse -Force $uninstallKey }
+            Remove-Item $startMenuShortcut -Force -ErrorAction SilentlyContinue
+            Remove-Item $desktopShortcut -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: mado-windows
-          path: build/bin/mado.exe
+          path: |
+            build/bin/mado.exe
+            build/bin/mado-amd64-installer.exe
+          if-no-files-found: error

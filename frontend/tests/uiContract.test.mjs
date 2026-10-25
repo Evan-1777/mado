@@ -227,7 +227,14 @@ has(html, 'maxlength="100"', 'preview font limit');
 has(html, 'lang="zh-CN"', 'document language');
 has(html, 'data-theme="dark"', 'root default theme');
 has(html, 'href="./app.css"', 'stylesheet asset path');
-has(html, 'src="./app.js"', 'bundle asset path');
+has(html, 'rel="preload" as="script" href="./app.js"', 'bundle preload');
+has(html, 'id="app-bootstrap"', 'deferred bundle loader');
+has(html, "script.src = './app.js'", 'bundle asset path in loader');
+hasNot(html, '<script src="./app.js"></script>', 'synchronous bundle tag');
+has(html, '<header class="titlebar" aria-hidden="true">', 'boot shell titlebar');
+has(html, '<div class="toolbar" aria-hidden="true"></div>', 'boot shell toolbar');
+has(html, '<main class="pane editor-only" aria-hidden="true"></main>', 'boot shell pane');
+has(html, '<div class="drag-zone"><span class="title">Mado</span></div>', 'boot shell title');
 
 // ---- standalone HTML export pipeline ----
 hasNot(baseCss, '@media print', 'retired print media query');
@@ -245,6 +252,13 @@ hasNot(ts, 'exportToPdfData', 'retired pdfExporter pipeline import');
 const modes = ts.match(/data-mode="(preview|editor|split)"/g) ?? [];
 if (modes.length !== 3) fail(`mode tabs: expected 3 data-mode, got ${modes.length}`);
 has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
+has(ts, 'app.replaceChildren();', 'boot shell cleared before building UI');
+has(ts, "document.readyState === 'loading'", 'init supports both loading and loaded documents');
+has(ts, 'void init();', 'init runs immediately once the bundle executes');
+hasNot(ts, "window.addEventListener('DOMContentLoaded', () => { void init(); });", 'DOMContentLoaded as the only init path');
+has(ts, 'previewStale = true;', 'skipped empty preview is marked stale');
+has(ts, 'isPreviewVisible() && previewStale', 'first preview activation renders the stale preview');
+has(ts, 'previewCss = \'\'; // first visible preview refreshes CSS together with content', 'preview activation refreshes CSS');
 has(ts, "b.setAttribute('aria-pressed', 'false')", 'export segmented aria-pressed reset');
 has(ts, "btn.setAttribute('aria-pressed', 'true')", 'export segmented aria-pressed set');
 for (const [mode, label] of [['editor', '编辑'], ['preview', '预览'], ['split', '分栏']]) {

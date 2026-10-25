@@ -1,5 +1,9 @@
 node_modules/
-build/
+build/bin/
+build/windows/*
+!build/windows/installer/
+build/windows/installer/*
+!build/windows/installer/project.nsi
 dist/
 frontend/node_modules/
 *.exe
