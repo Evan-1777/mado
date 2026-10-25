@@ -181,8 +181,8 @@ Rules: no parent channel; no subagents; on blockers call advisor; return executo
   - **交接**：Tasks.md 产出后立即结束当前回复，等待接手模型，不继续交付阶段；交接后的评审反馈与计划修订仅在规划段内处理，收到用户明确的执行指令才进入交付段。在交接处接收外部审阅报告时，须批判性吸收（严禁盲目拿来主义），对照代码库与工程纪律逐条核实正误与合理性，排查并剔除过度设计与过度安全防御，仅将确属合理有效的建议吸纳入 Plan.md 与 Tasks.md，并在回复中简要陈述采纳与驳回理由；修订后继续保持交接等待，直至收到明确执行指令
   - **交付段**：接手模型依据落盘文档建立上下文、不依赖上一会话；Explore-lite 聚焦 Plan / Task 关联的源文件与调用链，随后执行至归档提交
   - **Frontend 扩展**（输入含 "Main-hybrid" 且含 "Frontend" 时触发，如 "Main-hybrid(Frontend)"）：
-    - 规划段额外加载 `frontend-design` 与 `production-frontend` 为临时上下文，选定设计哲学；Plan 阶段额外在项目目录 `temp/` 产出前端变更 Demo（静态 HTML，浏览器直接打开）。Demo 严格依据修改范围与目标对象靶向产出（禁止全量重抄无关页面）；变更核心重点展示，强依赖上下文严格对齐既有设计与排版，弱相关或无关内容直接省略或极简色块占位；多方案须按方案创建独立文件（如 `temp/<name>-variant-a.html`），禁止单文件堆叠；以排版节奏与组件关系设计为核心，保证整体设计美观和谐；Tasks.md 与 Demo 产出后结束回复进入交接
-    - 交付段加载 `frontend-design` 与 `production-frontend`，依从规划段选定的设计哲学执行，遵循成品级表面要求，保证最终实现与设计规范一致
+    - 规划段额外加载 `frontend-design` 与 `production-frontend` 为临时上下文，选定设计哲学（Apple HIG / Microsoft Fluent / Material 3），并加载对应设计系统技能（Fluent → `fluent-design`，Material 3 → `material-3`）；Plan 阶段额外在项目目录 `temp/` 产出前端变更 Demo（静态 HTML，浏览器直接打开）。Demo 严格依据修改范围与目标对象靶向产出（禁止全量重抄无关页面）；变更核心重点展示，强依赖上下文严格对齐既有设计与排版，弱相关或无关内容直接省略或极简色块占位；多方案须按方案创建独立文件（如 `temp/<name>-variant-a.html`），禁止单文件堆叠；以排版节奏与组件关系设计为核心，保证整体设计美观和谐；Tasks.md 与 Demo 产出后结束回复进入交接
+    - 交付段加载 `frontend-design`、`production-frontend` 与规划段选定的设计系统技能，依从规划段选定的设计哲学执行，遵循成品级表面要求，保证最终实现与设计规范一致
   - **适用**：跨模型智商梯度调度、跨 Agent 工具协同交付；涉及前端界面/组件变更时使用 Main-hybrid(Frontend) 拓展
 - **Quick**（用户输入含 "Quick"）：`Explore → Formulate Tasks → Execute → Document Maintenance → Archive → Git Commit`
   - **要点**：跳过 Plan；Task 粒度更细，单 Task 修改不超过 3 个文件，禁止跨模块大重构
