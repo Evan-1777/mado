@@ -253,6 +253,9 @@ has(ts, 'sandbox="allow-same-origin"', 'preview iframe sandbox');
 // UI and persisted theme are ready; both halves of that contract must agree.
 has(goMain, 'StartHidden: true', 'window hidden until the frontend reveals it');
 has(ts, 'WindowShow();', 'window revealed when the interface is ready');
+if (ts.indexOf('s.WindowMaximized === true') > ts.indexOf('WindowShow();')) {
+  fail('maximised start state must be applied before the window reveal');
+}
 hasNot(ts, 'app.replaceChildren', 'pre-bundle shell cleanup retired');
 has(ts, "document.readyState === 'loading'", 'init supports both loading and loaded documents');
 has(ts, 'void init();', 'init runs immediately once the bundle executes');

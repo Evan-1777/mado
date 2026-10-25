@@ -1425,7 +1425,6 @@ try {
 
 async function init() {
   setupResizeController();
-  void syncMaximisedState();
   // The window is created hidden (StartHidden). Wait for the document to load
   // before revealing it so the first visible frame is the finished UI, never a
   // blank WebView2 surface or the pre-bundle shell.
@@ -1448,6 +1447,12 @@ async function init() {
     if (setWrapInput) setWrapInput.checked = (s.Wrap !== false);
     if (setMathInput) setMathInput.checked = (s.Math !== false);
     if (setPreviewFontInput) setPreviewFontInput.value = currentPreviewFont;
+    // Go derives the window start state from these same settings, so seeding
+    // the chrome here keeps a maximised launch from showing the restore glyph
+    // one frame late; the resize listener keeps it in sync afterwards.
+    const maximised = s.WindowMaximized === true;
+    app.classList.toggle('maximised', maximised);
+    setWinGlyphs(maximised);
   } catch (err) {
     console.error('init: settings failed', err);
     applyTheme('dark', false);

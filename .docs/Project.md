@@ -61,7 +61,7 @@ mado/
 ```
 
 - **数据流**：
-  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高、最大化标记与主题，注入 Wails 启动选项（`StartHidden: true`，窗口背景取主题 frame 色）并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径。页面由 `index.html` 常规加载 `app.js`，`main.ts` 构建真实 titlebar/toolbar/pane 与编辑器，并以 `readyState` 分支立即执行 `init`。`init` 并发发起 `GetSettings` 与 `GetStartupFile`，应用设置与主题后等待页面 `load` 再调用 `WindowShow()` 显示窗口，随后才处理启动文件：有文件则 `LoadFile` 并渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。窗口的第一可见帧即完整界面，不经过空壳或黑屏；不读 lastfile 且启动只读不创建配置目录。
+  - **启动**：`main.go` 预读 exe 目录 `settings.json` 获取窗口宽高、最大化标记与主题，注入 Wails 启动选项（`StartHidden: true`，窗口背景取主题 frame 色）并赋给 `app.settings` 快照；检查旧配置目录执行单次迁移；解析启动参数传递文件路径。页面由 `index.html` 常规加载 `app.js`，`main.ts` 构建真实 titlebar/toolbar/pane 与编辑器，并以 `readyState` 分支立即执行 `init`。`init` 并发发起 `GetSettings` 与 `GetStartupFile`，应用设置与主题、按持久设置预置最大化状态后等待页面 `load`，再调用 `WindowShow()` 显示窗口，随后才处理启动文件：有文件则 `LoadFile` 并渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。窗口的第一可见帧即完整界面，不经过空壳或黑屏；不读 lastfile 且启动只读不创建配置目录。
   - **编辑与渲染**：CodeMirror 变化由 `renderScheduler` 进行尾随 80ms 节流并配合 Promise 背压合并最新请求 → 并行调用 `Render(md)` 与 `GetCSS()` → 预览更新：首帧用 srcdoc 引导骨架，后续在 iframe 内原地比较并更新 style 文本或 article innerHTML（保留滚动位置）；公式定界符由 Go 解析输出占位元素，在前端父上下文调用 `katex.renderToString` 回填。
   - **偏好持久化**：设置模态内修改主题、换行、公式开关或预览字体（经 `fontCommit` 串行校验）时，前端调用 Go 导出方法；全部通过 `App.persist` 统一执行（在副本上更新，磁盘写入成功才赋回内存快照），保持内存与磁盘强一致。
   - **代码复制与剪贴板**：围栏代码块由包装渲染器输出紧凑复制按钮，iframe 文档 click 委托读取同级 pre 文本后调用 `SetClipboard`，通过 Win32 `GetForegroundWindow` / `OpenClipboard` 写入宿主前台根 HWND，触发 Win+V 剪贴板历史；非 Windows 或异常回退 `ClipboardSetText`。
