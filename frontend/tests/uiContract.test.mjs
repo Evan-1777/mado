@@ -284,6 +284,21 @@ for (const glyph of ['ICON_DRAWER_OPEN', 'ICON_DRAWER_CLOSE', 'ICON_NEW', 'ICON_
   has(icons, 'export const ' + glyph, 'icon ' + glyph);
 }
 
+// ---- the top app bar is the window drag region; only controls opt out ----
+hasRule(style, '.top-app-bar', '--app-region: drag', 'top app bar drag region');
+for (const selector of ['.icon-btn', '.seg', '.win-controls', '.win-btn']) {
+  hasRule(style, selector, '--app-region: no-drag', 'top app bar control opt-out');
+}
+// The layout groups sit inside the bar and must keep inheriting its drag
+// region; a no-drag here swallows the elastic blank bands that hold the
+// window, which is the regression this contract exists to pin.
+for (const selector of ['.app-bar-leading', '.app-bar-center', '.app-bar-trailing']) {
+  const block = style.match(new RegExp(selector.replace(/[.*+?^()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'));
+  if (!block) fail('app bar layout container: ' + selector + ' rule missing');
+  else if (/no-drag/.test(block[1])) fail('app bar layout container: ' + selector + ' must inherit the drag region');
+}
+hasNot(main, 'dblclick', 'native bridge owns title-bar double click');
+
 // ---- coordinator behaviour contracts ----
 has(tocView, 'direction * 16', 'toc keyboard step');
 has(tocView, 'setPointerCapture(event.pointerId)', 'toc splitter pointer capture');

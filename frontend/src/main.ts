@@ -402,13 +402,9 @@ shell.winMin.addEventListener('click', () => { void host.minimize(); });
 shell.winMax.addEventListener('click', () => { void toggleMaximize(); });
 shell.winClose.addEventListener('click', () => { void requestClose(); });
 
-// The top app bar is the drag region; a double click on its empty space
-// toggles maximisation, the way a native caption behaves.
-document.querySelector('.top-app-bar')?.addEventListener('dblclick', (e) => {
-  if ((e.target as Element | null)?.closest?.('button')) return;
-  void toggleMaximize();
-});
-
+// A double click on the drag region is handled by the MyGo runtime, which
+// forwards it to the native caption; the frontend only follows the resulting
+// resize through syncMaximisedState below.
 let resizeSyncTimer: number | null = null;
 window.addEventListener('resize', () => {
   if (resizeSyncTimer !== null) window.clearTimeout(resizeSyncTimer);

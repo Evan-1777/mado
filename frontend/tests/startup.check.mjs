@@ -237,6 +237,34 @@ const scenario = `<script>
         document.querySelector('#close-dialog form')?.getAttribute('method') === 'dialog',
     });
 
+    // The top app bar drags the window everywhere except on its controls.
+    // Sample the real hit test at both elastic blank bands so a no-drag
+    // regression on a layout container fails here instead of in a manual click.
+    stage = 'top-bar-drag-regions';
+    const barBox = document.querySelector('.top-app-bar').getBoundingClientRect();
+    const barY = barBox.top + barBox.height / 2;
+    const boxOf = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const hitAt = (x, y) => document.elementFromPoint(x, y);
+    const regionOf = (el) => getComputedStyle(el).getPropertyValue('--app-region').trim();
+    const blankHits = [
+      hitAt((boxOf('.status').right + boxOf('.seg').left) / 2, barY),
+      hitAt((boxOf('.seg').right + boxOf('#btn-new').left) / 2, barY),
+      hitAt(boxOf('#title').left + boxOf('#title').width / 2, barY),
+      hitAt(boxOf('.status').left + boxOf('.status').width / 2, barY),
+    ];
+    const controlHits = ['#toc-collapse', '#tab-editor', '#btn-new', '.win-close'].map((selector) => {
+      const target = boxOf(selector);
+      return hitAt(target.left + target.width / 2, barY);
+    });
+    results.push({
+      name: 'top-bar-drag-regions',
+      ok: blankHits[0] === document.querySelector('.app-bar-leading') &&
+        blankHits[1] === document.querySelector('.app-bar-trailing') &&
+        blankHits.every((hit) => hit && regionOf(hit) === 'drag' &&
+          !hit.closest('button,input,textarea,select,a[href]')) &&
+        controlHits.every((hit) => hit && regionOf(hit) === 'no-drag'),
+    });
+
     const loadBeforeCancel = state.loadCalls;
     stage = 'open-cancel';
     document.getElementById('btn-open').click();
@@ -383,6 +411,7 @@ const port = server.address().port;
 const chrome = process.env.CHROME_BIN || 'google-chrome';
 const child = spawn(chrome, [
   '--headless=new', '--disable-gpu', '--no-first-run',
+  '--window-size=1280,800',
   '--virtual-time-budget=20000', '--dump-dom', `http://127.0.0.1:${port}/`,
 ], { stdio: ['ignore', 'pipe', 'ignore'] });
 

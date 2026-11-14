@@ -89,14 +89,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  --app-region: no-drag;
 }
 
 .app-bar-center {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  --app-region: no-drag;
 }
 
 .app-bar-trailing {
@@ -105,7 +103,6 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 2px;
-  --app-region: no-drag;
 }
 
 #title {
@@ -183,6 +180,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  --app-region: no-drag;
   transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
     color var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
 }
@@ -217,6 +215,7 @@ body {
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-full);
   overflow: hidden;
+  --app-region: no-drag;
 }
 
 .seg button {
@@ -269,6 +268,7 @@ body {
   align-self: stretch;
   flex: 0 0 auto;
   margin-right: -4px;
+  --app-region: no-drag;
 }
 
 .win-btn {
