@@ -838,13 +838,6 @@ body {
   color: var(--md-sys-color-on-surface);
 }
 
-.settings-desc,
-.export-desc {
-  font-size: var(--md-sys-typescale-body-small-size);
-  line-height: var(--md-sys-typescale-body-small-line-height);
-  color: var(--md-sys-color-on-surface-variant);
-}
-
 .settings-control,
 .export-control {
   display: flex;
