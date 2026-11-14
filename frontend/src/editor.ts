@@ -16,12 +16,9 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 export type ThemeName = 'dark' | 'light';
 
-/** What the editor's shortcuts and gutter ask the coordinator to do. */
+/** What the editor's gutter asks the coordinator to do; application-wide
+    shortcuts are dispatched by the coordinator, not bound here. */
 export interface EditorActions {
-  save(): void;
-  open(): void;
-  create(): void;
-  exportHtml(): void;
   /** Move the preview to the block that starts at `line`. */
   jumpToPreview(line: number): void;
   /** Called for every user edit (never for programmatic replacements). */
@@ -87,12 +84,6 @@ export function createEditor(host: HTMLElement, actions: EditorActions, options:
         ...historyKeymap,
         ...foldKeymap,
         indentWithTab,
-        { key: 'Ctrl-s', run: () => { actions.save(); return true; } },
-        { key: 'Ctrl-o', run: () => { actions.open(); return true; } },
-        { key: 'Ctrl-Shift-p', run: () => { actions.open(); return true; } },
-        { key: 'Ctrl-n', run: () => { actions.create(); return true; } },
-        { key: 'Ctrl-p', run: () => { actions.exportHtml(); return true; } },
-        { key: 'Ctrl-Shift-e', run: () => { actions.exportHtml(); return true; } },
       ]),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged || isLoading) return;

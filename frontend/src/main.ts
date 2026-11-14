@@ -67,13 +67,10 @@ function setDirty(v: boolean): void {
 const preview: Preview = createPreview(shell.previewIframe, shell.previewEmpty, {
   copy: copyToClipboard,
   scrollEditorToLine: (line) => { editor.scrollToLine(line); },
+  onKeydown: handleGlobalKeydown,
 });
 
 const editor: Editor = createEditor(shell.editorHost, {
-  save: () => { void saveCurrent(); },
-  open: () => { void openFile(); },
-  create: () => { void newFile(); },
-  exportHtml: () => modals.openExport(),
   jumpToPreview: (line) => preview.scrollToLine(line),
   onChange: () => {
     setDirty(true);
@@ -161,7 +158,7 @@ async function refreshPreview(): Promise<void> {
     const [html, css] = await Promise.all([host.render(md), cssForTheme()]);
     if (version !== renderVersion) return; // superseded by newer input
     previewCss = css;
-    preview.write(html, css);
+    preview.write(html, css, math);
     tocView.update(md);
     previewStale = false;
     if (shell.status.classList.contains('error')) return;
@@ -386,6 +383,31 @@ function setMode(mode: PaneMode): void {
   if (mode !== 'preview') editor.syncMeasure();
   tocView.renderIfDirty();
 }
+
+// -------------------------------------------------------------- shortcuts
+
+// Application shortcuts are dispatched here so they stay reachable in Editor,
+// Preview and Split mode and while the preview frame has focus. A modifier key
+// and no Alt keep them clear of typing and of the browser's own editing keys;
+// an open modal swallows the rest instead of stacking a second dialog.
+function handleGlobalKeydown(e: KeyboardEvent): void {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const key = e.key.toLowerCase();
+  const plain = !e.shiftKey;
+  const isSave = plain && key === 's';
+  const isOpen = (plain && key === 'o') || (e.shiftKey && key === 'p');
+  const isNew = plain && key === 'n';
+  const isExport = (plain && key === 'p') || (e.shiftKey && key === 'e');
+  if (!isSave && !isOpen && !isNew && !isExport) return;
+  e.preventDefault(); // Ctrl+P/Ctrl+S would otherwise open the WebView's own UI
+  if (modals.isAnyOpen()) return;
+  if (isSave) void saveCurrent();
+  else if (isOpen) void openFile();
+  else if (isNew) void newFile();
+  else modals.openExport();
+}
+
+window.addEventListener('keydown', handleGlobalKeydown, { capture: true });
 
 // --------------------------------------------------------------- wiring
 

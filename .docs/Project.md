@@ -14,7 +14,7 @@
 - **Shell**：bash
 - **运行时**：Go 1.27.3+（`go.mod` 声明 `go 1.27.3`，本机 `go` 为 1.27.0，由 `GOTOOLCHAIN=auto` 自动切到已缓存的 go1.27.3 工具链，属正常现象）；Node.js 24 + npm 11（前端构建）
 - **版本管理**：git；`main` 为稳定主分支，无复杂分支策略
-- **桌面宿主**：`github.com/egoist/mygo v0.7.4`（`mygo.json` 声明 name/slug/identifier/version、`frontendDist`、`buildCommand` 与 md/markdown/mdown 文件关联）
+- **桌面宿主**：`github.com/egoist/mygo v0.7.4`（`mygo.json` 声明 name/slug/identifier/version、`icon: assets/icon.png`、`frontendDist`、`buildCommand` 与 md/markdown/mdown 文件关联）。图标源位于独立 `assets/` 目录：`mygo build` 只把它编译进 Windows PE 资源段与 NSIS 安装/卸载器，不向构建输出或安装目录拷贝裸露 PNG
 - **运行**：
   - 本机验证链（最小占用，产物均 gitignored）：
     1. `cd frontend && npm install --include=dev`
@@ -40,10 +40,11 @@
 ```
 mado/
 ├─ go.mod / go.sum          # Go 模块依赖（goldmark、mygo v0.7.4、chroma 等）
-├─ mygo.json                # MyGo 应用描述：应用标识、版本、前端产物、构建命令、文件关联
-├─ main.go                  # MyGo 入口：类型化事件（request-close / open-file）、主题源预设、服务绑定、隐藏标题栏窗口、关闭拦截
-├─ main_test.go             # 根包测试：配置迁移、启动副作用、持久化失败、并发绑定与关闭一致性
-├─ app.go                   # App 绑定层：聚合各 internal 模块并导出前端 IPC 方法，读写锁守护状态，原生能力经 win 守卫
+├─ mygo.json                # MyGo 应用描述：应用标识、版本、图标、前端产物、构建命令、文件关联
+├─ assets/icon.png          # 1024×1024 应用图标源，经 icon 字段编译进 PE 资源与安装器
+├─ main.go                  # MyGo 入口：命令行文件参数筛选、类型化事件（request-close / open-file）、主题源预设、服务绑定、隐藏标题栏窗口、关闭拦截
+├─ main_test.go             # 根包测试：配置迁移、启动副作用、启动文件消费分流、持久化失败、并发绑定与关闭一致性
+├─ app.go                   # App 绑定层：聚合各 internal 模块并导出前端 IPC 方法，读写锁守护状态（含加锁的启动文件消费分流），原生能力经 win 守卫
 ├─ app_windows.go           # Win32 原生剪贴板管道（绑定前台宿主 HWND 写入，触发 Win+V 剪贴板历史）
 ├─ app_other.go             # 非 Windows 平台剪贴板无操作回退桩
 ├─ internal/filesys/        # 文件读写与原子保存，以及 lastfile 只写记录
@@ -76,7 +77,7 @@ mado/
 ```
 
 - **数据流**：
-  - **启动**：`main.go` 调 `app.initState()` 读取 exe 目录 `settings.json`（含旧配置目录一次性迁移，只读不创建配置目录），据持久主题预设 `mygo.Theme.SetSource`，注册 `App.OnOpenFile` 并 `mygo.Bind(app)`；`App.WhenReady` 中创建 `Hidden: true` + `TitleBarHidden` + `HideWindowButtons` 主窗口（宽高/最大化取自持久设置，背景 `light-dark(#eeedf4, #1e1f25)`），注册 `win.OnClose` 拦截。页面加载 `app.js` 后 `main.ts` 并行发起 `GetSettings` 与 `GetStartupFile`，应用主题/换行/字体与最大化状态，等 `document.readyState === "complete"` 调 `ShowWindow()` 显现窗口，随后才处理启动文件：有文件则 `LoadFile` 渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。窗口第一可见帧即完整界面。
+  - **启动**：`main.go` 调 `app.initState()` 读取 exe 目录 `settings.json`（含旧配置目录一次性迁移，只读不创建配置目录），据持久主题预设 `mygo.Theme.SetSource`，命令行首参经 `firstFileArg` 跳过 `-` 标志后写入启动缓冲，`App.OnOpenFile` 统一经 `app.handleOpenFile` 分流（前端未读取启动值时覆盖缓冲、不派发事件；`GetStartupFile` 置 `startupConsumed` 后运行期打开改由 `open-file` 事件派发，字段与消费位同受 `a.mu` 保护），随后 `mygo.Bind(app)`；`App.WhenReady` 中创建 `Hidden: true` + `TitleBarHidden` + `HideWindowButtons` 主窗口（宽高/最大化取自持久设置，背景 `light-dark(#eeedf4, #1e1f25)`），注册 `win.OnClose` 拦截。页面加载 `app.js` 后 `main.ts` 并行发起 `GetSettings` 与 `GetStartupFile`，应用主题/换行/字体与最大化状态，等 `document.readyState === "complete"` 调 `ShowWindow()` 显现窗口，随后才处理启动文件：有文件则 `LoadFile` 渲染一次；无文件走 `newFile()` 空白态，Editor 模式下跳过 `Render`/`GetCSS`，首次激活预览时补一次渲染。窗口第一可见帧即完整界面。
   - **编辑与渲染**：CodeMirror 变化由 `renderScheduler` 尾随 80ms 节流并配合 Promise 背压合并最新请求 → 并行调用 `Render(md)` 与 `GetCSS()` → 预览更新：首帧 `srcdoc` 引导骨架，后续在 iframe 内原地更新样式文本或 `article` innerHTML（保留滚动位置）；渲染版本号丢弃乱序响应。公式由 Go 输出带 `data-tex` 的占位元素，前端父上下文用 KaTeX 回填（500 条缓存）。
   - **偏好持久化**：设置模态内修改主题、换行、公式开关或预览字体（经 `fontCommit` 串行校验）时调用 Go 导出方法；全部经 `App.persist`（副本更新，磁盘写入成功才赋回内存快照）保持内存与磁盘强一致；主题变更同时 `Theme.SetSource` 同步原生对话框、DWM 边框与 `prefers-color-scheme`。
   - **代码复制与剪贴板**：围栏代码块由包装渲染器输出紧凑复制按钮，iframe 文档 click 委托读取同级 `pre` 文本后调用 `SetClipboard`，经 Win32 `GetForegroundWindow`/`OpenClipboard` 写入前台根 HWND 触发 Win+V 历史；宿主调用失败时回退 `navigator.clipboard`。
@@ -105,7 +106,7 @@ mado/
 - 2026-11-14 `SetTheme` 持久化成功后同步 `mygo.Theme.SetSource`——同时更新 Windows 原生文件对话框、DWM 边框、`light-dark()` 窗口底色与 WebView2 `prefers-color-scheme`
 - 2026-11-14 窗口尺寸记忆使用 `window.innerWidth`/`window.innerHeight`（DIP）而非新增原生尺寸查询绑定——MyGo 隐藏标题栏模式下页面铺满窗口，CSS 像素即 DIP；`WindowControls` 也不提供尺寸查询
 - 2026-11-14 关闭拦截改为 `win.OnClose` + `CloseEvent.PreventDefault()` + 类型化事件 `request-close`——与 Wails 的 `OnBeforeClose` 语义等价，但走 MyGo 原生事件与绑定
-- 2026-11-14 类型化 IPC 由 `mygo generate` 产出 `frontend/src/mygo.ts` 并纳入仓库——新增/修改 Go 导出方法后必须重新 generate 并提交，前端 `bridge.ts` 与其一一对应（uiContract 逐方法断言，`setStartupFile`/`setTitle` 为已声明的宿主侧例外）
+- 2026-11-14 类型化 IPC 由 `mygo generate` 产出 `frontend/src/mygo.ts` 并纳入仓库——新增/修改 Go 导出方法后必须重新 generate 并提交，公开方法集精确等于前端真实 IPC 契约，`bridge.ts` 与其零例外一一对应（uiContract 逐方法断言）
 - 2026-11-14 `saveFileDialog` 测试注入签名改为 `func(defaultFilename string) (string, error)`——去掉框架耦合的 opts 结构体，测试可断言默认文件名契约
 - 2026-11-14 `startup(ctx)` 重写为无参 `initState()`——MyGo 绑定无 Wails context，启动职责收敛为迁移 + 读取设置
 - 2026-11-14 前端视觉体系整体切换为 Material Design 3（`tokens.css` 全套色彩角色/字阶/形状/动效令牌 + 色调表面层级）——取代 Fluent 硬编码色值与亚克力模糊；深度由容器色阶与圆角表达，不再依赖投影与毛玻璃
@@ -133,6 +134,10 @@ mado/
 - 2026-11-14 前端构建产物目录不得与 `mygo build` 的 embed 生成物同名——`mygo_frontend_gen.go` 与 `mygo_frontend/` 若已存在于包目录会直接报错，禁止手工放置同名文件
 - 2026-11-14 Linux 上 `CGO_ENABLED=0 go test -race` 不可用（`-race` 需要 cgo），本机竞态验证以 `go test -race ./...` 执行，CI 仅跑 `go test ./...`
 - 2026-11-14 NSIS 安装器由 MyGo 内置模板生成，卸载键为 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\io.github.mado.editor`，安装目录 `%LOCALAPPDATA%\Programs\Mado`——CI 冒烟脚本按此断言文件、注册表与快捷方式清理
+- 2026-11-14 应用图标置于独立 `assets/` 目录并经 `mygo.json` 的 `icon` 字段单点接入——`resources/` 下的文件会被原样拷贝到可执行文件同级目录并打入安装包，独立目录让图标只编译进 PE 资源段与 NSIS 安装/卸载器；CI 以 `ExtractAssociatedIcon` 断言嵌入结果，并断言产物目录无裸露 `icon.png`
+- 2026-11-14 启动期与运行期外部打开以加锁的 `startupConsumed` 消费位分流——宿主先执行建窗回调再投递命令行文件，以“窗口是否为空”判定在启动期恒为假；消费位同时消除 `startupFile` 无锁数据竞态与启动事件丢失/二次打开
+- 2026-11-14 全局快捷键单一归口于 `main.ts` 捕获阶段的 `handleGlobalKeydown`，预览 iframe 内按键经 `preview.ts` 转发到同一入口——编辑/预览/分栏与 iframe 焦点下均可达；编辑器与模态不再各自绑定应用热键，任一原生模态打开时由 `isAnyOpen()` 阻断底层动作与重复 `showModal`
+- 2026-11-14 预览与独立导出的公式回填严格跟随 `math` 开关——关闭时 `preview.write` 重写 Go 侧源占位 HTML 还原未渲染内容，导出不再无条件扫描数学占位类名
 
 ## 术语
 
@@ -148,6 +153,7 @@ mado/
 - **窗口就绪显示（window ready）** = 窗口以 `Hidden: true` 创建，`main.ts` 在真实 UI、持久主题与页面 `load` 就绪后调用 `ShowWindow()` 显示；第一可见帧即完整界面，不经过启动骨架
 - **previewStale** = 预览内容落后于当前文档的标记；Editor 模式空文档新建时置位，首次切到预览/分栏时触发一次补渲染并清除
 - **tocDirty** = 目录抽屉折叠期间大纲结构已变化的标记；展开时重绘一次
+- **startupConsumed** = 启动文件缓冲已被前端消费的状态位；置位前的打开覆盖缓冲，置位后的打开经 `open-file` 事件派发
 
 ## 维护
 
@@ -157,6 +163,7 @@ mado/
 | 依赖增删或升级 | 环境与运行；属关键选型时同步「约束与决策」 |
 | 模块增删、重构，依赖方向变化 | 结构 |
 | Go 导出方法增删（IPC 契约） | 结构（`mygo.ts`）；须重新 `mygo generate` 并同步 `bridge.ts` |
+| 应用图标替换 | 结构（`assets/icon.png`）；保持 `mygo.json` 的 `icon` 字段为 1024×1024 方形 PNG |
 | 命名、语言、日志规范调整 | 约定 |
 | 新坑、新约束、选型定型 | 约束与决策 |
 | 新增项目特有名词 | 术语 |

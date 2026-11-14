@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"github.com/egoist/mygo"
 
@@ -19,21 +20,32 @@ var requestCloseEvent = mygo.NewEvent[struct{}]("request-close")
 // command line or window drop) to the frontend, which runs the unsaved guard.
 var openFileEvent = mygo.NewEvent[string]("open-file")
 
+// firstFileArg returns the first command line argument that is not a flag, or
+// an empty string when every argument is one.
+func firstFileArg(args []string) string {
+	for _, arg := range args {
+		if arg == "" || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return arg
+	}
+	return ""
+}
+
 func main() {
 	app := NewApp()
 	s := app.initState()
 
-	// A file association launch passes the document as the first argument.
-	if len(os.Args) > 1 && os.Args[1] != "" {
-		app.SetStartupFile(os.Args[1])
+	// A file association launch passes the document as the first argument,
+	// after any flags.
+	if arg := firstFileArg(os.Args[1:]); arg != "" {
+		app.setStartupFile(arg)
 	}
 
 	mygo.App.OnOpenFile(func(path string) {
-		if app.window() == nil {
-			app.SetStartupFile(path)
-			return
+		if win, ok := app.handleOpenFile(path); ok {
+			_ = openFileEvent.Emit(win, path)
 		}
-		_ = openFileEvent.Emit(app.window(), path)
 	})
 
 	// Native dialogs, the window frame and the page's prefers-color-scheme

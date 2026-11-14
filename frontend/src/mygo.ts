@@ -40,8 +40,10 @@ export const App = {
     return call("App.GetSettings");
   },
   /**
-   * GetStartupFile returns the file path the app was launched with, or an
-   * empty string when none was given.
+   * GetStartupFile returns the file path the app was launched with, or an empty
+   * string when none was given. Reading it marks the startup value as consumed,
+   * so a later open is delivered on the open-file event instead of being
+   * buffered.
    */
   getStartupFile(): Promise<string> {
     return call("App.GetStartupFile");
@@ -117,13 +119,6 @@ export const App = {
     return call("App.SetPreviewFont", font);
   },
   /**
-   * SetStartupFile records the file path passed on the command line (used by
-   * Windows "Open with" file association launches).
-   */
-  setStartupFile(path: string): Promise<void> {
-    return call("App.SetStartupFile", path);
-  },
-  /**
    * SetTheme persists a new theme and syncs the native appearance source, which
    * drives the native dialogs, the window frame and the page's
    * prefers-color-scheme. The theme source is only touched once the window
@@ -131,10 +126,6 @@ export const App = {
    */
   setTheme(themeName: string): Promise<void> {
     return call("App.SetTheme", themeName);
-  },
-  /** SetTitle updates the native window title. */
-  setTitle(title: string): Promise<void> {
-    return call("App.SetTitle", title);
   },
   /** SetWindowMaximized persists whether the window is currently maximised. */
   setWindowMaximized(maximized: boolean): Promise<void> {

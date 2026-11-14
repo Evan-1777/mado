@@ -45,6 +45,8 @@ export interface Modals {
   askUnsaved(): Promise<UnsavedChoice>;
   openSettings(): void;
   openExport(): void;
+  /** True while any of the three dialogs is showing. */
+  isAnyOpen(): boolean;
   /** Re-reads the theme and font state into the settings controls. */
   syncSettingsUI(): void;
 }
@@ -65,6 +67,13 @@ export function createModals(deps: ModalDeps): Modals {
 
   let exportTheme: ExportTheme = 'light';
   let exportMargin: ExportMargin = 'std';
+
+  // A native <dialog> throws when showModal runs twice on an open one, and
+  // stacking a second modal over the first makes the backdrop swallow clicks.
+  // Every opener goes through this single check.
+  function isAnyOpen(): boolean {
+    return Boolean(closeDialog?.open || settingsDialog?.open || exportDialog?.open);
+  }
 
   // ---------------------------------------------------------- unsaved changes
 
@@ -144,6 +153,7 @@ export function createModals(deps: ModalDeps): Modals {
   }
 
   function openSettings(): void {
+    if (isAnyOpen()) return;
     syncSettingsUI();
     settingsDialog?.showModal();
   }
@@ -200,21 +210,12 @@ export function createModals(deps: ModalDeps): Modals {
   // ------------------------------------------------------------------- export
 
   function openExport(): void {
-    if (!exportDialog) return;
+    if (!exportDialog || isAnyOpen()) return;
     exportDialog.returnValue = '';
     exportDialog.showModal();
   }
 
   document.getElementById('btn-export')?.addEventListener('click', () => openExport());
-
-  window.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    const key = e.key.toLowerCase();
-    if ((!e.shiftKey && key === 'p') || (e.shiftKey && key === 'e')) {
-      e.preventDefault();
-      openExport();
-    }
-  });
 
   exportDialog?.addEventListener('click', (e) => {
     const rect = exportDialog.getBoundingClientRect();
@@ -259,7 +260,7 @@ export function createModals(deps: ModalDeps): Modals {
       const htmlData = await exportToHtmlData(html, baseThemeCss, {
         title: docTitle,
         margin: exportMargin,
-        renderMath: renderMathInRoot,
+        renderMath: deps.getMath() ? renderMathInRoot : undefined,
       });
 
       const chosenPath = await host.saveHtmlFileDialog(`${deps.getExportBaseName() || 'untitled'}.html`);
@@ -286,5 +287,5 @@ export function createModals(deps: ModalDeps): Modals {
     void runExport();
   });
 
-  return { askUnsaved, openSettings, openExport, syncSettingsUI };
+  return { askUnsaved, openSettings, openExport, isAnyOpen, syncSettingsUI };
 }

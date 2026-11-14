@@ -4,6 +4,7 @@
   "identifier": "io.github.mado.editor",
   "version": "0.7.0",
   "publisher": "Mado",
+  "icon": "assets/icon.png",
   "main": ".",
   "out": "dist",
   "bindings": "frontend/src/mygo.ts",

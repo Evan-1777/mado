@@ -31,7 +31,12 @@ type App struct {
 	saveFileDialog func(defaultFilename string) (string, error)
 	dirty          bool
 	quitting       bool
-	startupFile    string
+	// startupFile is the path the app was launched with, or a path opened
+	// before the frontend read the startup value. startupConsumed records that
+	// the frontend has taken that value, after which opens are delivered on the
+	// open-file event instead. Both are guarded by mu.
+	startupFile     string
+	startupConsumed bool
 }
 
 // NewApp creates the application instance.
@@ -108,7 +113,6 @@ func (a *App) LoadFile(path string) (string, error) {
 		return "", err
 	}
 	a.recordLastFile(path)
-	a.SetTitle(filepath.Base(path))
 	return content, nil
 }
 
@@ -128,7 +132,6 @@ func (a *App) SaveFile(path, content string) error {
 		return err
 	}
 	a.recordLastFile(path)
-	a.SetTitle(filepath.Base(path))
 	return nil
 }
 
@@ -255,23 +258,40 @@ func (a *App) SetClipboard(text string) error {
 	return setNativeClipboard(text)
 }
 
-// SetTitle updates the native window title.
-func (a *App) SetTitle(title string) {
-	if win := a.window(); win != nil {
-		win.SetTitle("Mado — " + title)
-	}
-}
-
-// SetStartupFile records the file path passed on the command line (used by
+// setStartupFile records the file path passed on the command line (used by
 // Windows "Open with" file association launches).
-func (a *App) SetStartupFile(path string) {
+func (a *App) setStartupFile(path string) {
+	a.mu.Lock()
 	a.startupFile = path
+	a.mu.Unlock()
 }
 
-// GetStartupFile returns the file path the app was launched with, or an
-// empty string when none was given.
+// GetStartupFile returns the file path the app was launched with, or an empty
+// string when none was given. Reading it marks the startup value as consumed,
+// so a later open is delivered on the open-file event instead of being
+// buffered.
 func (a *App) GetStartupFile() string {
-	return a.startupFile
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	path := a.startupFile
+	a.startupConsumed = true
+	return path
+}
+
+// handleOpenFile routes a file the host opened. Before the frontend has read
+// the startup value the path replaces that buffer and nothing is emitted;
+// afterwards the path is emitted on the window, when there is one.
+func (a *App) handleOpenFile(path string) (*mygo.Window, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.startupConsumed {
+		a.startupFile = path
+		return nil, false
+	}
+	if a.win != nil {
+		return a.win, true
+	}
+	return nil, false
 }
 
 // SetDirty records whether the editor has unsaved changes. It is used by

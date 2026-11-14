@@ -13,12 +13,14 @@ export interface PreviewActions {
   copy(text: string): Promise<void>;
   /** Put the editor caret-driven viewport at `line`. */
   scrollEditorToLine(line: number): void;
+  /** Application shortcuts pressed while the frame's document has focus. */
+  onKeydown(e: KeyboardEvent): void;
 }
 
 export interface Preview {
   iframe: HTMLIFrameElement;
   /** Writes the rendered article and its stylesheet into the frame. */
-  write(html: string, css: string): void;
+  write(html: string, css: string, math?: boolean): void;
   /** Puts the block containing `line` at the top of the frame's viewport. */
   scrollToLine(line: number): void;
   /** Saves the frame scroll offset before the column is hidden. */
@@ -61,6 +63,9 @@ export function renderMathInRoot(root: Document | HTMLElement | null | undefined
 export function createPreview(iframe: HTMLIFrameElement, emptyEl: HTMLElement, actions: PreviewActions): Preview {
   let lastWrittenHtml = '';
   let lastWrittenCss = '';
+  // The rendered article carries KaTeX output, not the source placeholders, so
+  // the math switch must be remembered to know when to rewrite the source.
+  let lastMathEnabled = true;
   let savedScroll: number | undefined;
 
   const shellHtml = (html: string, css: string) => `<!DOCTYPE html>
@@ -95,6 +100,11 @@ export function createPreview(iframe: HTMLIFrameElement, emptyEl: HTMLElement, a
     if (!doc) return;
     doc.addEventListener('click', (e) => {
       void onClick(doc, e);
+    });
+    // The frame is a separate document, so the coordinator's window-level
+    // listener never sees keys pressed while the preview has focus.
+    doc.addEventListener('keydown', (e) => {
+      actions.onKeydown(e);
     });
   }
 
@@ -169,7 +179,7 @@ export function createPreview(iframe: HTMLIFrameElement, emptyEl: HTMLElement, a
   // every time that document is rebuilt. In-place updates keep it.
   iframe.addEventListener('load', () => {
     hookFrame();
-    renderMathInRoot(frameDocument());
+    if (lastMathEnabled) renderMathInRoot(frameDocument());
     frameDocument()?.body?.classList.toggle('md-gutter', gutterVisible);
   });
 
@@ -194,7 +204,7 @@ export function createPreview(iframe: HTMLIFrameElement, emptyEl: HTMLElement, a
       const i = pickBlockIndex(blocks.map((b) => b.line), line);
       blocks[i].el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
-    write: (html, css) => {
+    write: (html, css, math = true) => {
       emptyEl.hidden = html.trim().length > 0;
       const doc = frameDocument();
       const content = doc?.getElementById('md-content');
@@ -205,23 +215,29 @@ export function createPreview(iframe: HTMLIFrameElement, emptyEl: HTMLElement, a
         iframe.srcdoc = shellHtml(html, css);
         lastWrittenHtml = html;
         lastWrittenCss = css;
+        lastMathEnabled = math;
         return;
       }
       const cssChanged = css !== lastWrittenCss;
       const htmlChanged = html !== lastWrittenHtml;
+      // Turning math off rewrites the source html, which still holds the
+      // placeholders the Go renderer emitted.
+      const mathChanged = math !== lastMathEnabled;
       try {
         if (cssChanged) style.textContent = css;
-        if (htmlChanged) {
+        if (htmlChanged || mathChanged) {
           content.innerHTML = html;
-          renderMathInRoot(doc);
+          if (math) renderMathInRoot(doc);
         }
         lastWrittenHtml = html;
         lastWrittenCss = css;
+        lastMathEnabled = math;
       } catch {
         // Cross-origin / unexpected frame state: fall back to a full rebuild.
         iframe.srcdoc = shellHtml(html, css);
         lastWrittenHtml = html;
         lastWrittenCss = css;
+        lastMathEnabled = math;
       }
     },
     // display:none detaches the frame's viewport, which clamps its scroll

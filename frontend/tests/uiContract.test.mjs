@@ -61,24 +61,31 @@ for (const eventName of ['requestClose', 'openFile']) {
 has(client, 'request-close', 'request-close event name');
 has(client, 'open-file', 'open-file event name');
 
-// Every bound method is either delegated by the bridge or documented as
-// host-side only: nothing may silently fall out of the bridge contract.
-const HOST_SIDE_ONLY = new Map([
-  ['setStartupFile', 'set by main.go from the command line and file-association launches'],
-  ['setTitle', 'expressed through mygo-runtime currentWindow.setTitle so the page owns the caption'],
-]);
+// Every bound method is delegated by the bridge: nothing may silently fall out
+// of the contract and no method is exempt.
 const generatedMethods = [...client.matchAll(/^  ([a-zA-Z]+)\(/gm)].map((m) => m[1]);
 if (generatedMethods.length < 20) fail('generated client: expected the full App surface, got ' + generatedMethods.length);
 for (const method of generatedMethods) {
-  if (bridge.includes('App.' + method)) continue;
-  if (HOST_SIDE_ONLY.has(method)) continue;
-  fail('bridge is missing App.' + method);
+  if (!bridge.includes('App.' + method)) fail('bridge is missing App.' + method);
 }
 has(bridge, "import { isMyGo, currentWindow, onFileDrop } from 'mygo-runtime';", 'bridge imports the runtime');
 has(bridge, 'events.requestClose.on', 'bridge subscribes to request-close');
 has(bridge, 'events.openFile.on', 'bridge subscribes to open-file');
 has(bridge, 'isMyGo() ? desktopHost : browserHost', 'bridge dual-environment switch');
 hasNot(modules, 'wailsjs', 'retired Wails bindings');
+
+// ---- the app icon is a 1024 square PNG wired through mygo.json ----
+const config = JSON.parse(read('../mygo.json'));
+if (config.icon !== 'assets/icon.png') fail('mygo.json icon: got ' + JSON.stringify(config.icon));
+const icon = fs.readFileSync(path.join(FRONTEND, '..', 'assets', 'icon.png'));
+if (!icon.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+  fail('assets/icon.png: not a PNG');
+} else {
+  if (icon.subarray(12, 16).toString('ascii') !== 'IHDR') fail('assets/icon.png: first chunk is not IHDR');
+  const iconW = icon.readUInt32BE(16);
+  const iconH = icon.readUInt32BE(20);
+  if (iconW !== 1024 || iconH !== 1024) fail('assets/icon.png: expected 1024x1024, got ' + iconW + 'x' + iconH);
+}
 
 // ---- MD3 colour roles: both palettes define every role ----
 const ROLES = [
@@ -298,6 +305,14 @@ for (const selector of ['.app-bar-leading', '.app-bar-center', '.app-bar-trailin
   else if (/no-drag/.test(block[1])) fail('app bar layout container: ' + selector + ' must inherit the drag region');
 }
 hasNot(main, 'dblclick', 'native bridge owns title-bar double click');
+
+// ---- one owner for application shortcuts and no dialog re-entry ----
+has(main, 'handleGlobalKeydown', 'central application shortcut dispatch');
+has(main, "window.addEventListener('keydown', handleGlobalKeydown, { capture: true })", 'capture-phase shortcut binding');
+has(preview, 'actions.onKeydown(e)', 'preview frame forwards keys to the coordinator');
+has(modals, 'isAnyOpen', 'modal re-entry guard');
+has(modals, 'if (isAnyOpen()) return;', 'modal opener refuses re-entry');
+hasNot(editor, "'Ctrl-s'", 'editor no longer binds application shortcuts');
 
 // ---- coordinator behaviour contracts ----
 has(tocView, 'direction * 16', 'toc keyboard step');

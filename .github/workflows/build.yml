@@ -61,6 +61,13 @@ jobs:
           $installer = Get-ChildItem 'dist\windows-amd64\mado-setup-*-amd64.exe' -ErrorAction SilentlyContinue
           if (-not (Test-Path $portable)) { throw 'portable executable was not produced' }
           if (-not $installer) { throw 'NSIS installer was not produced' }
+          # The icon is compiled into the PE resources, not copied next to the
+          # executable: a loose icon.png would break the single-file portable form.
+          if (Test-Path 'dist\windows-amd64\icon.png') { throw 'icon.png leaked into the build output' }
+          Add-Type -AssemblyName System.Drawing
+          $ico = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $portable).Path)
+          if ($null -eq $ico -or $ico.Width -le 0) { throw 'portable executable has no embedded icon' }
+          $ico.Dispose()
 
       - name: Verify install and uninstall
         shell: pwsh

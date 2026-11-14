@@ -35,6 +35,7 @@ window.__startup = {
   dirtyCalls: [],
   clip: '',
   loadCalls: 0,
+  saveDialogCalls: 0,
   loadPaths: [],
   openPath: 'cancel.md',
   rejectLoad: false,
@@ -74,7 +75,7 @@ const stubs = stateScript + runtimeStub(`{
     return path === 'startup.md' ? ${JSON.stringify(startupDoc)} : '# opened\\n';
   },
   'App.SaveFile': () => {},
-  'App.SaveFileDialog': () => '',
+  'App.SaveFileDialog': () => { state.saveDialogCalls++; return ''; },
   'App.OpenFileDialog': () => state.openPath,
   'App.Render': (md) => {
     state.renderInputs.push(md);
@@ -364,6 +365,21 @@ const scenario = `<script>
       ok: state.renderInputs.length === rendersBeforeNew + 1 &&
         state.renderInputs.at(-1) === '' &&
         state.cssCalls === cssBeforeNew + 1,
+    });
+
+    // Application shortcuts are owned by the coordinator, so they must stay
+    // reachable while the editor column is hidden in Preview mode.
+    stage = 'preview-mode-shortcuts';
+    const saveDialogsBefore = state.saveDialogCalls;
+    const previewOnly = document.querySelector('.pane')?.classList.contains('preview-only');
+    document.body.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 's', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    await waitFor(() => state.saveDialogCalls === saveDialogsBefore + 1);
+    results.push({
+      name: 'preview-mode-shortcuts',
+      ok: previewOnly && state.saveDialogCalls === saveDialogsBefore + 1 &&
+        document.querySelector('.pane')?.classList.contains('preview-only'),
     });
 
     const fcp = performance.getEntriesByName('first-contentful-paint')[0]?.startTime;

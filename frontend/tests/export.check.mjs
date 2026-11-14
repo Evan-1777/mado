@@ -220,6 +220,21 @@ const scenario = `<script>
     );
     results.push({ name: 'export-error-feedback', ok: errorOk });
 
+    // 5. Re-entering the export hotkey while the dialog is already open must
+    //    neither throw (showModal on an open dialog) nor stack another modal.
+    const reentryErrors = [];
+    const onWindowError = (event) => { reentryErrors.push(event.message || String(event.error)); };
+    window.addEventListener('error', onWindowError);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'p', ctrlKey: true, bubbles: true, cancelable: true,
+    }));
+    await wait(80);
+    window.removeEventListener('error', onWindowError);
+    results.push({
+      name: 'modal-reentry-guard',
+      ok: reentryErrors.length === 0 && exportDialog.open === true,
+    });
+
     report(results.map((r) => r.name + ': ' + (r.ok ? 'PASS' : 'FAIL')).join(' | ') +
       (results.every((r) => r.ok) ? ' => ALL PASS' : ' => FAIL'));
   } catch (err) {

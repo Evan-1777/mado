@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
+
 	"mado/internal/settings"
 )
 
@@ -281,8 +283,8 @@ func TestWindowAndClipboardBindings(t *testing.T) {
 	}
 }
 
-// TestConcurrentBindingsNoRace exercises the Wails-style concurrent binding
-// calls while the injected stores deliberately share one unsynchronized map.
+// TestConcurrentBindingsNoRace exercises concurrent binding calls while the
+// injected stores deliberately share one unsynchronized map.
 // The App write lock must serialize both store paths and state mutation.
 func TestConcurrentBindingsNoRace(t *testing.T) {
 	dir := t.TempDir()
@@ -315,7 +317,7 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 			defer wg.Done()
 			savePath := filepath.Join(dir, fmt.Sprintf("save-%d.md", worker))
 			for i := 0; i < 100; i++ {
-				switch (worker*100 + i) % 10 {
+				switch (worker*100 + i) % 12 {
 				case 0:
 					_, err := a.Render("# heading")
 					if err != nil {
@@ -355,6 +357,10 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 					}
 				case 9:
 					_ = a.shouldPreventClose()
+				case 10:
+					_ = a.GetStartupFile()
+				case 11:
+					a.handleOpenFile("race.md")
 				}
 			}
 		}()
@@ -369,6 +375,56 @@ func TestConcurrentBindingsNoRace(t *testing.T) {
 	}
 	if _, ok := shared["lastfile"]; !ok {
 		t.Fatal("concurrent lastfile writes did not complete")
+	}
+}
+
+// TestStartupFileAndOpenFileLifecycle verifies that a file opened before the
+// frontend consumes the startup value replaces that buffer, and that opens
+// after consumption go to the running-time event path instead.
+func TestStartupFileAndOpenFileLifecycle(t *testing.T) {
+	a := NewApp()
+
+	// Launch argument buffered, then an open arrives before the frontend reads
+	// it: the buffer is updated instead of emitting an event.
+	a.setStartupFile("cli.md")
+	if win, emit := a.handleOpenFile("association.md"); emit || win != nil {
+		t.Fatalf("pre-consumption open emitted: win=%v emit=%v", win, emit)
+	}
+
+	// The read returns the latest buffered path and marks the startup value
+	// consumed.
+	if got := a.GetStartupFile(); got != "association.md" {
+		t.Fatalf("startup file = %q, want association.md", got)
+	}
+
+	// After consumption an open goes to the event path, which needs a window.
+	if win, emit := a.handleOpenFile("running.md"); emit || win != nil {
+		t.Fatalf("open without a window emitted: win=%v emit=%v", win, emit)
+	}
+	a.setWindow(&mygo.Window{})
+	win, emit := a.handleOpenFile("running.md")
+	if !emit || win == nil {
+		t.Fatalf("open with a window did not emit: win=%v emit=%v", win, emit)
+	}
+}
+
+func TestFirstFileArg(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"skips flags", []string{"--flag", "-v", "note.md"}, "note.md"},
+		{"flags only", []string{"--headless", "-x"}, ""},
+		{"empty args", nil, ""},
+		{"empty strings", []string{"", "doc.md"}, "doc.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := firstFileArg(tc.args); got != tc.want {
+				t.Fatalf("firstFileArg(%q) = %q, want %q", tc.args, got, tc.want)
+			}
+		})
 	}
 }
 
