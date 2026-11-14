@@ -2,7 +2,7 @@
   "name": "Mado",
   "slug": "mado",
   "identifier": "io.github.mado.editor",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "publisher": "Mado",
   "main": ".",
   "out": "dist",
