@@ -1,0 +1,159 @@
+/* ============ Mado Material Design 3 system tokens ============
+   Colour roles, type scale, shape, motion and interaction state layers.
+   The preview iframe carries its own token sheet
+   (internal/theme/assets/theme/tokens-*.css); uiContract.test.mjs pins the
+   colours the two surfaces share. Layers: frame → chrome → document panes.
+   =========================================================== */
+
+:root {
+  /* ---- shape ---- */
+  --md-sys-shape-corner-none: 0px;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* ---- typescale ---- */
+  --md-sys-typescale-headline-small-size: 24px;
+  --md-sys-typescale-headline-small-line-height: 32px;
+  --md-sys-typescale-headline-small-weight: 400;
+  --md-sys-typescale-title-medium-size: 16px;
+  --md-sys-typescale-title-medium-line-height: 24px;
+  --md-sys-typescale-title-medium-weight: 500;
+  --md-sys-typescale-title-small-size: 14px;
+  --md-sys-typescale-title-small-line-height: 20px;
+  --md-sys-typescale-title-small-weight: 500;
+  --md-sys-typescale-body-large-size: 16px;
+  --md-sys-typescale-body-large-line-height: 24px;
+  --md-sys-typescale-body-large-weight: 400;
+  --md-sys-typescale-body-medium-size: 14px;
+  --md-sys-typescale-body-medium-line-height: 20px;
+  --md-sys-typescale-body-medium-weight: 400;
+  --md-sys-typescale-body-small-size: 12px;
+  --md-sys-typescale-body-small-line-height: 16px;
+  --md-sys-typescale-body-small-weight: 400;
+  --md-sys-typescale-label-large-size: 14px;
+  --md-sys-typescale-label-large-line-height: 20px;
+  --md-sys-typescale-label-large-weight: 500;
+  --md-sys-typescale-label-medium-size: 12px;
+  --md-sys-typescale-label-medium-line-height: 16px;
+  --md-sys-typescale-label-medium-weight: 500;
+  --md-sys-typescale-label-small-size: 11px;
+  --md-sys-typescale-label-small-line-height: 16px;
+  --md-sys-typescale-label-small-weight: 500;
+
+  /* ---- motion ---- */
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium2: 300ms;
+
+  /* ---- outline drawer geometry ----
+     Linked: settings.MinWindowWidth keeps the drawer usable at the window
+     minimum; tocView.ts clamps drag and keyboard resizing to the same range. */
+  --toc-w: 256px;
+  --toc-w-min: 160px;
+  --toc-w-max: 420px;
+
+  /* ---- type ---- */
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei UI", sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", "Segoe UI", monospace;
+}
+
+/* ---- colour roles: dark (default) + light ---------------------------------
+   --pane-bg, --selection-bg, --editor-active-line and --focus-ring are the
+   editor semantics derived from the roles. --pane-bg mirrors the preview
+   token sheet's --bg so the editor and the preview stay one surface.
+   Linked: "light-dark(#eeedf4, #1e1f25)" in main.go (window background) must
+   equal the two surface-container values below. */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --md-sys-color-primary: #b4c5ff;
+  --md-sys-color-on-primary: #1e2f60;
+  --md-sys-color-primary-container: #37477c;
+  --md-sys-color-on-primary-container: #dbe1ff;
+  --md-sys-color-secondary: #c1c6dd;
+  --md-sys-color-on-secondary: #2b3042;
+  --md-sys-color-secondary-container: #414659;
+  --md-sys-color-on-secondary-container: #dbe1f9;
+  --md-sys-color-tertiary: #e5bad7;
+  --md-sys-color-on-tertiary: #44273d;
+  --md-sys-color-tertiary-container: #5c3d54;
+  --md-sys-color-on-tertiary-container: #ffd7f0;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+  --md-sys-color-surface: #121318;
+  --md-sys-color-surface-dim: #0d0e13;
+  --md-sys-color-surface-bright: #38393f;
+  --md-sys-color-surface-container-lowest: #0d0e13;
+  --md-sys-color-surface-container-low: #1a1b20;
+  --md-sys-color-surface-container: #1e1f25;
+  --md-sys-color-surface-container-high: #282a2f;
+  --md-sys-color-surface-container-highest: #33353a;
+  --md-sys-color-on-surface: #e3e2e9;
+  --md-sys-color-on-surface-variant: #c5c6d0;
+  --md-sys-color-outline: #8f909a;
+  --md-sys-color-outline-variant: #44464f;
+  --md-sys-color-inverse-surface: #e3e2e9;
+  --md-sys-color-inverse-on-surface: #2f3036;
+  --md-sys-color-inverse-primary: #4b5c92;
+  --md-sys-color-scrim: rgba(0, 0, 0, 0.32);
+
+  --pane-bg: #121318;
+  /* CodeMirror paints the selection below the line elements, so the active
+     line must stay translucent or it hides the selection on that line. */
+  --editor-active-line: rgba(227, 226, 233, 0.05);
+  --selection-bg: rgba(180, 197, 255, 0.32);
+  --focus-ring: var(--md-sys-color-primary);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --md-sys-color-primary: #4b5c92;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #dbe1ff;
+  --md-sys-color-on-primary-container: #041a49;
+  --md-sys-color-secondary: #595d72;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #dde1f9;
+  --md-sys-color-on-secondary-container: #161b2c;
+  --md-sys-color-tertiary: #77536c;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffd7f0;
+  --md-sys-color-on-tertiary-container: #2d1228;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-surface: #faf8ff;
+  --md-sys-color-surface-dim: #dad9e0;
+  --md-sys-color-surface-bright: #faf8ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f4f3fa;
+  --md-sys-color-surface-container: #eeedf4;
+  --md-sys-color-surface-container-high: #e8e7ee;
+  --md-sys-color-surface-container-highest: #e2e2e9;
+  --md-sys-color-on-surface: #1a1b20;
+  --md-sys-color-on-surface-variant: #44464f;
+  --md-sys-color-outline: #757780;
+  --md-sys-color-outline-variant: #c5c6d0;
+  --md-sys-color-inverse-surface: #2f3036;
+  --md-sys-color-inverse-on-surface: #f1f0f7;
+  --md-sys-color-inverse-primary: #b4c5ff;
+  --md-sys-color-scrim: rgba(0, 0, 0, 0.32);
+
+  --pane-bg: #ffffff;
+  --editor-active-line: rgba(26, 27, 32, 0.04);
+  --selection-bg: #dbe1ff;
+  --focus-ring: var(--md-sys-color-primary);
+}

@@ -37,41 +37,42 @@ func TestLight(t *testing.T) {
 	}
 }
 
-// TestTokenValues pins preview colors to the paired Fluent 2 shell palette.
-// The iframe has its own stylesheet, so these literals keep both surfaces aligned.
+// TestTokenValues pins preview colors to the paired Material Design 3 shell
+// palette. The iframe has its own stylesheet, so these literals keep both
+// surfaces aligned.
 func TestTokenValues(t *testing.T) {
 	want := map[string]map[string]string{
 		"dark": {
-			"--bg":           "#1f1f1f",
-			"--fg":           "#ffffff",
-			"--muted":        "#d1d1d1",
-			"--border":       "#383838",
-			"--accent":       "#479ef5",
-			"--accent-soft":  "rgba(71, 158, 245, 0.18)",
-			"--selection-bg": "rgba(0, 120, 212, 0.45)",
-			"--code-bg":      "#282828",
-			"--quote-bg":     "#282828",
-			"--quote-border": "#4f4f4f",
-			"--table-head":   "#282828",
-			"--table-stripe": "#262626",
-			"--link":         "#479ef5",
-			"--heading":      "#ffffff",
+			"--bg":           "#121318",
+			"--fg":           "#e3e2e9",
+			"--muted":        "#c5c6d0",
+			"--border":       "#44464f",
+			"--accent":       "#b4c5ff",
+			"--accent-soft":  "rgba(180, 197, 255, 0.16)",
+			"--selection-bg": "rgba(180, 197, 255, 0.32)",
+			"--code-bg":      "#1a1b20",
+			"--quote-bg":     "#1a1b20",
+			"--quote-border": "#8f909a",
+			"--table-head":   "#1e1f25",
+			"--table-stripe": "#16171d",
+			"--link":         "#b4c5ff",
+			"--heading":      "#e3e2e9",
 		},
 		"light": {
 			"--bg":           "#ffffff",
-			"--fg":           "#242424",
-			"--muted":        "#616161",
-			"--border":       "#e0e0e0",
-			"--accent":       "#0078d4",
-			"--accent-soft":  "#eff6ff",
-			"--selection-bg": "#bfdbfe",
-			"--code-bg":      "#f5f5f5",
-			"--quote-bg":     "#fbfbfb",
-			"--quote-border": "#c0c0c0",
-			"--table-head":   "#f0f0f0",
-			"--table-stripe": "#f9f9f9",
-			"--link":         "#0078d4",
-			"--heading":      "#242424",
+			"--fg":           "#1a1b20",
+			"--muted":        "#44464f",
+			"--border":       "#c5c6d0",
+			"--accent":       "#4b5c92",
+			"--accent-soft":  "#dbe1ff",
+			"--selection-bg": "#dbe1ff",
+			"--code-bg":      "#f4f3fa",
+			"--quote-bg":     "#f4f3fa",
+			"--quote-border": "#757780",
+			"--table-head":   "#eeedf4",
+			"--table-stripe": "#faf8ff",
+			"--link":         "#4b5c92",
+			"--heading":      "#1a1b20",
 		},
 	}
 	for _, themeName := range []string{"dark", "light"} {

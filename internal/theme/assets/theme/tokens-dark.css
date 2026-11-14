@@ -1,19 +1,19 @@
 /* mado theme tokens: dark */
 :root {
-  --bg: #1f1f1f;
-  --fg: #ffffff;
-  --muted: #d1d1d1;
-  --border: #383838;
-  --accent: #479ef5;
-  --accent-soft: rgba(71, 158, 245, 0.18);
-  /* Mirrors --selection-bg in the shell stylesheet: the iframe has its own
+  --bg: #121318;
+  --fg: #e3e2e9;
+  --muted: #c5c6d0;
+  --border: #44464f;
+  --accent: #b4c5ff;
+  --accent-soft: rgba(180, 197, 255, 0.16);
+  /* Mirrors --selection-bg in the shell token sheet: the iframe has its own
      document, so the two values must be edited together. */
-  --selection-bg: rgba(0, 120, 212, 0.45);
-  --code-bg: #282828;
-  --quote-bg: #282828;
-  --quote-border: #4f4f4f;
-  --table-head: #282828;
-  --table-stripe: #262626;
-  --link: #479ef5;
-  --heading: #ffffff;
+  --selection-bg: rgba(180, 197, 255, 0.32);
+  --code-bg: #1a1b20;
+  --quote-bg: #1a1b20;
+  --quote-border: #8f909a;
+  --table-head: #1e1f25;
+  --table-stripe: #16171d;
+  --link: #b4c5ff;
+  --heading: #e3e2e9;
 }

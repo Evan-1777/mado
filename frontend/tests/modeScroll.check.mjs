@@ -10,6 +10,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeStub } from './mygo-runtime.stub.mjs';
 
 const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(FRONTEND, 'dist');
@@ -20,24 +21,28 @@ const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 // Long editor document + tall preview blocks give both panes >= 4000px of
 // scrollable height so scrollTop=4000 is a real offset, not clamped to 0.
 const longMd = Array.from({ length: 800 }, (_, i) => '## 标题 ' + i + '\n\n段落内容 ' + i + '\n').join('');
-const stubs = `<script>
-window.wails = { flags: { enableResize: true } };
-window.go = { main: { App: {
-  ForceQuit: () => Promise.resolve(), GetCSS: () => Promise.resolve(''),
-  GetSettings: () => Promise.resolve({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code' }),
-  GetStartupFile: () => Promise.resolve('test.md'),
-  LoadFile: () => Promise.resolve(${JSON.stringify(longMd)}),
-  SaveFile: () => Promise.resolve(), SaveFileDialog: () => Promise.resolve(''), OpenFileDialog: () => Promise.resolve(''),
-  Render: () => Promise.resolve(Array.from({length: 300}, (_, i) =>
-    '<div data-line="' + (i % 50 + 1) + '" style="height:40px">block ' + i + '</div>').join('')),
-  SetDirty: () => Promise.resolve(), SetTheme: () => Promise.resolve(), SetWrap: () => Promise.resolve(),
-  SetMath: () => Promise.resolve(), SetPreviewFont: () => Promise.resolve(), SetTitle: () => Promise.resolve(),
-} } };
-window.runtime = { WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
-  WindowIsMaximised: () => Promise.resolve(false), WindowSetTitle(){}, WindowShow(){}, EventsOn(){}, OnFileDrop(){},
-  WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){}, WindowOnThemeChanged(){},
-  EventsOff(){}, EventsOffAll(){}, EventsOnce(){}, EventsEmit(){}, WindowReload(){}, WindowReloadApp(){} };
+const stateScript = `<script>
+window.__modeScroll = {};
 </script>`;
+const stubs = stateScript + runtimeStub(`{
+  'App.ForceQuit': () => {},
+  'App.GetCSS': () => '',
+  'App.GetSettings': () => ({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code', WindowWidth:1280, WindowHeight:800, WindowMaximized:false }),
+  'App.GetStartupFile': () => 'test.md',
+  'App.LoadFile': () => ${JSON.stringify(longMd)},
+  'App.SaveFile': () => {},
+  'App.SaveFileDialog': () => '',
+  'App.OpenFileDialog': () => '',
+  'App.Render': () => Array.from({length: 300}, (_, i) =>
+    '<div data-line="' + (i % 50 + 1) + '" style="height:40px">block ' + i + '</div>').join(''),
+  'App.SetDirty': () => {},
+  'App.SetTheme': () => {},
+  'App.SetWrap': () => {},
+  'App.SetMath': () => {},
+  'App.SetPreviewFont': () => {},
+  'App.SetTitle': () => {},
+  'App.ShowWindow': () => {},
+}`);
 
 const scenario = `<script>
 (async () => {

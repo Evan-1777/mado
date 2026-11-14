@@ -7,31 +7,37 @@
     <link rel="stylesheet" href="./app.css"/>
 </head>
 <body>
-    <!-- The window stays hidden (StartHidden) until main.ts reveals it after
-         the real UI and persisted theme are ready, so this container never
-         paints an empty shell. -->
+    <!-- The window stays hidden until main.ts reveals it after the real UI and
+         persisted theme are ready, so this container never paints an empty shell. -->
     <div id="app"></div>
-    <!-- Unsaved-changes confirm: native <dialog> gives us Esc/cancel, focus
-         trapping and top-layer stacking over the preview iframe for free. -->
-    <dialog id="close-dialog" aria-labelledby="close-dialog-title">
-        <form method="dialog">
-            <h2 id="close-dialog-title">未保存的修改</h2>
+
+    <!-- Dialogs sit at the DOM root, never nested: a dialog inside a hidden
+         ancestor cannot be shown modally. Native <dialog> gives us Esc,
+         focus trapping and top-layer stacking over the preview iframe. -->
+
+    <!-- Unsaved-changes confirm -->
+    <dialog id="close-dialog" class="md3-dialog" aria-labelledby="close-dialog-title">
+        <div class="md3-dialog-header">
+            <h2 id="close-dialog-title">未保存的更改</h2>
+        </div>
+        <div class="md3-dialog-body">
             <p id="close-dialog-msg">是否保存对该文件的修改？</p>
-            <div class="dialog-actions">
-                <button type="submit" value="cancel">取消</button>
-                <button type="submit" value="no">不保存</button>
-                <button type="submit" value="yes" class="primary">保存</button>
-            </div>
+        </div>
+        <form method="dialog" class="md3-dialog-actions">
+            <button type="submit" value="cancel">取消</button>
+            <button type="submit" value="no">不保存</button>
+            <button type="submit" value="yes" class="primary">保存</button>
         </form>
     </dialog>
-    <!-- Settings dialog -->
-    <dialog id="settings-dialog" aria-labelledby="settings-dialog-title">
+
+    <!-- Settings -->
+    <dialog id="settings-dialog" class="md3-dialog" aria-labelledby="settings-dialog-title">
         <form method="dialog" class="settings-form">
-            <div class="settings-header">
+            <div class="md3-dialog-header">
                 <h2 id="settings-dialog-title">设置</h2>
-                <button type="submit" class="settings-close-btn" aria-label="关闭">✕</button>
+                <button type="submit" class="settings-close-btn" aria-label="关闭"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div class="settings-body">
+            <div class="md3-dialog-body">
                 <div class="settings-item">
                     <div class="settings-label">
                         <span class="settings-name">主题模式</span>
@@ -39,8 +45,8 @@
                     </div>
                     <div class="settings-control">
                         <div class="theme-segmented">
-                            <button type="button" id="set-theme-dark" class="active">深色</button>
-                            <button type="button" id="set-theme-light">浅色</button>
+                            <button type="button" id="set-theme-dark" class="active" aria-pressed="true">深色</button>
+                            <button type="button" id="set-theme-light" aria-pressed="false">浅色</button>
                         </div>
                     </div>
                 </div>
@@ -84,17 +90,20 @@
                     </div>
                 </div>
             </div>
+            <div class="md3-dialog-actions">
+                <button type="submit" value="done" class="primary">完成</button>
+            </div>
         </form>
     </dialog>
-    <!-- Export HTML dialog -->
-    <dialog id="export-dialog" aria-labelledby="export-dialog-title">
-        <form method="dialog" class="export-form">
-            <div class="export-header">
-                <h2 id="export-dialog-title">导出为 HTML</h2>
-                <button type="submit" class="export-close-btn" aria-label="关闭">✕</button>
-            </div>
-            <div class="export-body">
 
+    <!-- Export to standalone HTML -->
+    <dialog id="export-dialog" class="md3-dialog" aria-labelledby="export-dialog-title">
+        <form method="dialog" class="export-form">
+            <div class="md3-dialog-header">
+                <h2 id="export-dialog-title">导出为 HTML</h2>
+                <button type="submit" class="export-close-btn" aria-label="关闭"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="md3-dialog-body">
                 <div class="export-item export-item-col">
                     <div class="export-label">
                         <span class="export-name">页面色彩</span>
@@ -121,12 +130,13 @@
                     </div>
                 </div>
             </div>
-            <div class="dialog-actions">
+            <div class="md3-dialog-actions">
                 <button type="submit" value="cancel">取消</button>
                 <button type="submit" value="export" class="primary">导出</button>
             </div>
         </form>
     </dialog>
+
     <script src="./app.js"></script>
 </body>
 </html>

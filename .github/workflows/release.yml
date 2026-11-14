@@ -13,6 +13,9 @@ on:
 permissions:
   contents: write
 
+env:
+  CGO_ENABLED: "0"
+
 jobs:
   release:
     runs-on: windows-latest
@@ -23,7 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.x"
           cache-dependency-path: go.sum
 
       - name: Set up Node.js
@@ -32,11 +35,6 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
-        env:
-          CGO_ENABLED: 0
 
       - name: Determine version
         id: version
@@ -47,12 +45,14 @@ jobs:
           echo "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           echo "numeric=$($v.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      # The app version is read from mygo.json, so the tag drives the executable,
+      # the installer and the uninstall entry alike.
       - name: Patch product version
         shell: pwsh
         run: |
-          $json = Get-Content wails.json -Raw | ConvertFrom-Json
-          $json.info.productVersion = '${{ steps.version.outputs.numeric }}'
-          $json | ConvertTo-Json -Depth 10 | Set-Content -Path wails.json -Encoding utf8
+          $json = Get-Content mygo.json -Raw | ConvertFrom-Json
+          $json.version = '${{ steps.version.outputs.numeric }}'
+          $json | ConvertTo-Json -Depth 10 | Set-Content -Path mygo.json -Encoding utf8
 
       - name: Install NSIS
         shell: pwsh
@@ -60,26 +60,29 @@ jobs:
           choco install nsis -y --no-progress
           Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files (x86)\NSIS'
 
-      - name: Build frontend (dist/ required by go:embed)
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci && npm run build
+        run: npm ci
+
+      - name: Type-check and self-check the frontend
+        working-directory: frontend
+        run: npm run typecheck && npm test
 
       - name: Unit tests
         run: go test ./...
 
       - name: Build
-        run: wails build -nsis -installscope user
+        run: go run github.com/egoist/mygo/cmd/mygo@v0.7.4 build -platform windows/amd64
         env:
           GOFLAGS: -buildvcs=false
 
       - name: Verify installer exists
         shell: pwsh
         run: |
-          if (-not (Test-Path 'build/bin/mado-amd64-installer.exe')) {
-            throw 'NSIS installer was not produced'
-          }
+          $installer = Get-ChildItem 'dist\windows-amd64\mado-setup-*-amd64.exe' -ErrorAction SilentlyContinue
+          if (-not $installer) { throw 'NSIS installer was not produced' }
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ steps.version.outputs.version }}" build/bin/mado.exe build/bin/mado-amd64-installer.exe --generate-notes
+        run: gh release create "${{ steps.version.outputs.version }}" "dist/windows-amd64/Mado.exe" "dist/windows-amd64/mado-setup-${{ steps.version.outputs.numeric }}-amd64.exe" --generate-notes

@@ -1,0 +1,20 @@
+{
+  "name": "Mado",
+  "slug": "mado",
+  "identifier": "io.github.mado.editor",
+  "version": "0.1.0",
+  "publisher": "Mado",
+  "main": ".",
+  "out": "dist",
+  "bindings": "frontend/src/mygo.ts",
+  "frontendDist": "frontend/dist",
+  "buildCommand": "npm --prefix frontend run build",
+  "fileAssociations": [
+    {
+      "ext": ["md", "markdown", "mdown"],
+      "name": "Markdown Document",
+      "mimeType": "text/markdown",
+      "role": "Editor"
+    }
+  ]
+}

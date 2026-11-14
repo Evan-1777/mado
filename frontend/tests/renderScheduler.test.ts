@@ -45,7 +45,7 @@ function makeClock() {
 {
   const clock = makeClock();
   const calls: number[] = [];
-  const scheduler = createRenderScheduler(() => calls.push(clock.now), 80, clock.api);
+  const scheduler = createRenderScheduler(() => { calls.push(clock.now); }, 80, clock.api);
   scheduler.schedule();
   assert.deepEqual(calls, [], 'the first render waits for its timer turn');
   clock.advance(0);
@@ -55,7 +55,7 @@ function makeClock() {
 {
   const clock = makeClock();
   const calls: number[] = [];
-  const scheduler = createRenderScheduler(() => calls.push(clock.now), 80, clock.api);
+  const scheduler = createRenderScheduler(() => { calls.push(clock.now); }, 80, clock.api);
   scheduler.schedule();
   clock.advance(0);
   clock.advance(10);
@@ -71,7 +71,7 @@ function makeClock() {
 {
   const clock = makeClock();
   const calls: number[] = [];
-  const scheduler = createRenderScheduler(() => calls.push(clock.now), 80, clock.api);
+  const scheduler = createRenderScheduler(() => { calls.push(clock.now); }, 80, clock.api);
   scheduler.schedule();
   clock.advance(0);
   clock.advance(100);
@@ -83,7 +83,7 @@ function makeClock() {
 {
   const clock = makeClock();
   const calls: number[] = [];
-  const scheduler = createRenderScheduler(() => calls.push(clock.now), 80, clock.api);
+  const scheduler = createRenderScheduler(() => { calls.push(clock.now); }, 80, clock.api);
   scheduler.schedule();
   clock.advance(0);
   let lastSchedule = clock.now;
@@ -145,7 +145,7 @@ function makeClock() {
 {
   const clock = makeClock();
   let calls = 0;
-  const scheduler = createRenderScheduler(() => calls++, 80, clock.api);
+  const scheduler = createRenderScheduler(() => { calls++; }, 80, clock.api);
   scheduler.schedule();
   scheduler.cancel();
   clock.advance(100);

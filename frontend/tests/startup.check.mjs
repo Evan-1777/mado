@@ -10,6 +10,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeStub } from './mygo-runtime.stub.mjs';
 
 const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(FRONTEND, 'dist');
@@ -23,8 +24,11 @@ const types = {
 };
 
 const startupDoc = '# word\n';
-const stubs = `<script>
-window.wails = { flags: { enableResize: true } };
+const stateScript = `<script>
+// The two startup reads answer after a turn so their overlap is observable.
+function delay(value) {
+  return new Promise((resolve) => setTimeout(() => resolve(value), 20));
+}
 window.__startup = {
   renderInputs: [],
   cssCalls: 0,
@@ -34,7 +38,6 @@ window.__startup = {
   loadPaths: [],
   openPath: 'cancel.md',
   rejectLoad: false,
-  onDrop: null,
   settingsStart: 0,
   settingsDone: 0,
   startupStart: 0,
@@ -44,66 +47,55 @@ window.__startup = {
   editorAtShow: false,
   themeAtShow: '',
 };
+// A top-level binding, visible to the stub script that follows.
 const state = window.__startup;
-const delay = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 20));
-window.go = { main: { App: {
-  ForceQuit: () => Promise.resolve(),
-  GetCSS: () => { state.cssCalls++; return Promise.resolve('body { color: red; }'); },
-  GetSettings: () => {
+</script>`;
+const stubs = stateScript + runtimeStub(`{
+  'App.ForceQuit': () => {},
+  'App.GetCSS': () => { state.cssCalls++; return 'body { color: red; }'; },
+  'App.GetSettings': () => {
     state.settingsStart = performance.now();
-    return delay({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code' }).then((value) => {
+    return delay({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code', WindowWidth:1280, WindowHeight:800, WindowMaximized:false }).then((value) => {
       state.settingsDone = performance.now();
       return value;
     });
   },
-  GetStartupFile: () => {
+  'App.GetStartupFile': () => {
     state.startupStart = performance.now();
     return delay('startup.md').then((value) => {
       state.startupDone = performance.now();
       return value;
     });
   },
-  LoadFile: (path) => {
+  'App.LoadFile': (path) => {
     state.loadCalls++;
     state.loadPaths.push(path);
     if (state.rejectLoad) return Promise.reject(new Error('drop read failed'));
-    return Promise.resolve(path === 'startup.md' ? ${JSON.stringify(startupDoc)} : '# opened\\n');
+    return path === 'startup.md' ? ${JSON.stringify(startupDoc)} : '# opened\\n';
   },
-  SaveFile: () => Promise.resolve(),
-  SaveFileDialog: () => Promise.resolve(''),
-  OpenFileDialog: () => Promise.resolve(state.openPath),
-  Render: (md) => {
+  'App.SaveFile': () => {},
+  'App.SaveFileDialog': () => '',
+  'App.OpenFileDialog': () => state.openPath,
+  'App.Render': (md) => {
     state.renderInputs.push(md);
-    return Promise.resolve('<div class="md-line" data-line="1"><pre class="chroma"><code>copy me\\n</code></pre><button class="copy-code-btn" type="button" aria-label="复制代码" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5V2.5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 1.5 2.5v6a1.5 1.5 0 0 0 1.5 1.5h1"/></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.25 4.75L6 12l-3.25-3.25"/></svg></button></div>');
+    return '<div class="md-line" data-line="1"><pre class="chroma"><code>copy me\\n</code></pre><button class="copy-code-btn" type="button" aria-label="复制代码" title="复制代码"><svg class="copy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5V2.5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 1.5 2.5v6a1.5 1.5 0 0 0 1.5 1.5h1"/></svg><svg class="copied-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.25 4.75L6 12l-3.25-3.25"/></svg></button></div>';
   },
-  SetClipboard: (text) => { state.clip = text; return Promise.resolve(); },
-  SetWindowSize: (w, h) => { state.windowSize = { w, h }; return Promise.resolve(); },
-  SetWindowMaximized: (m) => { state.windowMaximized = m; return Promise.resolve(); },
-  SetDirty: (value) => { state.dirtyCalls.push(value); return Promise.resolve(); },
-  SetTheme: () => Promise.resolve(),
-  SetWrap: () => Promise.resolve(),
-  SetMath: () => Promise.resolve(),
-  SetPreviewFont: () => Promise.resolve(),
-  SetTitle: () => Promise.resolve(),
-} } };
-window.runtime = {
-  WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
-  WindowIsMaximised: () => Promise.resolve(false),
-  WindowGetSize: () => Promise.resolve({ w: 1280, h: 800 }),
-  WindowSetTitle(){},
-  WindowShow(){
+  'App.SetClipboard': (text) => { state.clip = text; },
+  'App.SetWindowSize': (w, h) => { state.windowSize = { w, h }; },
+  'App.SetWindowMaximized': (m) => { state.windowMaximized = m; },
+  'App.SetDirty': (value) => { state.dirtyCalls.push(value); },
+  'App.SetTheme': () => {},
+  'App.SetWrap': () => {},
+  'App.SetMath': () => {},
+  'App.SetPreviewFont': () => {},
+  'App.SetTitle': () => {},
+  'App.ShowWindow': () => {
     state.showCalls++;
     state.showAt = performance.now();
     state.editorAtShow = Boolean(document.querySelector('.cm-editor'));
     state.themeAtShow = document.documentElement.dataset.theme;
   },
-  EventsOn(){}, OnFileDrop(callback){ state.onDrop = callback; },
-  ClipboardSetText(text){ state.clip = text; return Promise.resolve(true); },
-  WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
-  WindowOnThemeChanged(){}, EventsOff(){}, EventsOffAll(){}, EventsOnce(){},
-  EventsEmit(){}, WindowReload(){}, WindowReloadApp(){},
-};
-</script>`;
+}`);
 
 const scenario = `<script>
 (async () => {
@@ -260,7 +252,7 @@ const scenario = `<script>
 
     state.rejectLoad = true;
     stage = 'drop-failure';
-    state.onDrop?.(0, 0, ['drop.md']);
+    window.__mygo.emit('mygo:file-drop', { paths: ['drop.md'], x: 0, y: 0 });
     await waitFor(() => document.getElementById('close-dialog')?.open);
     document.querySelector('#close-dialog button[value="no"]').click();
     await waitFor(() => !document.getElementById('close-dialog')?.open);
@@ -308,14 +300,14 @@ const scenario = `<script>
       selectionRect.width > 0 && selectionRect.height > 0 &&
       activeRect.top < selectionRect.bottom && selectionRect.top < activeRect.bottom &&
       alphaOf(getComputedStyle(activeLine).backgroundColor) < 1 &&
-      selectionColor() === 'rgba(0, 120, 212, 0.45)';
+      selectionColor() === 'rgba(180, 197, 255, 0.32)';
     document.getElementById('btn-settings').click();
     document.getElementById('set-theme-light').click();
     await waitFor(() => document.documentElement.dataset.theme === 'light');
     await waitFor(() => document.querySelector('.cm-selectionBackground'));
     results.push({
       name: 'selection-visibility',
-      ok: darkSelectionOk && selectionColor() === 'rgb(191, 219, 254)',
+      ok: darkSelectionOk && selectionColor() === 'rgb(219, 225, 255)',
     });
 
     // Empty new document in Editor mode must not fetch a hidden preview. The
@@ -358,11 +350,9 @@ const scenario = `<script>
     report('ERROR: ' + (err && err.message) +
       ' stage=' + stage +
       ' load=' + state.loadCalls +
-      ' onDrop=' + Boolean(state.onDrop) +
       ' dialog=' + Boolean(document.getElementById('close-dialog')?.open) +
       ' status=' + JSON.stringify(document.getElementById('status-text')?.textContent) +
       ' clip=' + JSON.stringify(state.clip) +
-      ' copy=' + JSON.stringify(document.getElementById('preview')?.contentDocument?.querySelector('.copy-code-btn')?.textContent) +
       ' editor=' + JSON.stringify(document.querySelector('.cm-content')?.textContent));
   }
 })();

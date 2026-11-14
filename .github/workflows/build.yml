@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  CGO_ENABLED: "0"
+
 jobs:
   build:
     runs-on: windows-latest
@@ -17,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.x"
           cache-dependency-path: go.sum
 
       - name: Set up Node.js
@@ -27,43 +30,45 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
-        env:
-          CGO_ENABLED: 0
-
       - name: Install NSIS
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
           Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files (x86)\NSIS'
 
-      - name: Build frontend (dist/ required by go:embed)
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci && npm run build
+        run: npm ci
+
+      - name: Type-check and self-check the frontend
+        working-directory: frontend
+        run: npm run typecheck && npm test
 
       - name: Unit tests
         run: go test ./...
 
+      # mygo build runs buildCommand (npm --prefix frontend run build) itself,
+      # then compiles the app with the frontend embedded through its overlay.
       - name: Build
-        run: wails build -nsis -installscope user
+        run: go run github.com/egoist/mygo/cmd/mygo@v0.7.4 build -platform windows/amd64
         env:
           GOFLAGS: -buildvcs=false
 
-      - name: Verify installer exists
+      - name: Verify artifacts
         shell: pwsh
         run: |
-          if (-not (Test-Path 'build/bin/mado-amd64-installer.exe')) {
-            throw 'NSIS installer was not produced'
-          }
+          $portable = 'dist\windows-amd64\Mado.exe'
+          $installer = Get-ChildItem 'dist\windows-amd64\mado-setup-*-amd64.exe' -ErrorAction SilentlyContinue
+          if (-not (Test-Path $portable)) { throw 'portable executable was not produced' }
+          if (-not $installer) { throw 'NSIS installer was not produced' }
 
       - name: Verify install and uninstall
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $PWD 'build/bin/mado-amd64-installer.exe'
+          $installer = (Get-ChildItem 'dist\windows-amd64\mado-setup-*-amd64.exe' | Select-Object -First 1).FullName
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Mado'
-          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Mado'
+          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\io.github.mado.editor'
           $startMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Mado.lnk'
           $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mado.lnk'
 
@@ -79,13 +84,13 @@ jobs:
           try {
             $install = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
             if ($install.ExitCode -ne 0) { throw "installer exited with $($install.ExitCode)" }
-            Wait-For { (Test-Path (Join-Path $dir 'mado.exe')) -and (Test-Path (Join-Path $dir 'uninstall.exe')) } 'installed files'
+            Wait-For { (Test-Path (Join-Path $dir 'Mado.exe')) -and (Test-Path (Join-Path $dir 'Uninstall.exe')) } 'installed files'
             Wait-For { Test-Path $uninstallKey } 'uninstall registry entry'
 
             $entry = Get-ItemProperty $uninstallKey
             if ($entry.DisplayName -ne 'Mado') { throw "unexpected DisplayName: $($entry.DisplayName)" }
 
-            $uninstall = Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S' -Wait -PassThru
+            $uninstall = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S' -Wait -PassThru
             if ($uninstall.ExitCode -ne 0) { throw "uninstaller exited with $($uninstall.ExitCode)" }
             Wait-For { -not (Test-Path $dir) } 'install directory removal'
             Wait-For { -not (Test-Path $uninstallKey) } 'uninstall registry removal'
@@ -113,6 +118,6 @@ jobs:
         with:
           name: mado-windows
           path: |
-            build/bin/mado.exe
-            build/bin/mado-amd64-installer.exe
+            dist/windows-amd64/Mado.exe
+            dist/windows-amd64/mado-setup-*-amd64.exe
           if-no-files-found: error

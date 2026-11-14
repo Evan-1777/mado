@@ -57,7 +57,7 @@ export function flattenToc(nodes: TocNode[]): TocNode[] {
 }
 
 export function restoreTocExpansion(previous: TocNode[], next: TocNode[]): void {
-  const previousState = new Map<string, boolean[]>();
+  const previousState = new Map<string, (boolean | undefined)[]>();
   const occurrences = new Map<string, number>();
   for (const node of flattenToc(previous)) {
     const key = node.level + ':' + node.text;

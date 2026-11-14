@@ -1,14 +1,13 @@
-// Package main is the Wails application entrypoint for Mado.
+// Package main is the MyGo application entrypoint for Mado.
 package main
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/egoist/mygo"
 
 	"mado/internal/filesys"
 	"mado/internal/mdrender"
@@ -16,22 +15,23 @@ import (
 	"mado/internal/theme"
 )
 
-// App is the root Wails-bound application object. All exported methods are
-// exposed to the frontend.
+// App is the root application service bound to the frontend. All exported
+// methods are callable from the page.
 type App struct {
 	mu       sync.RWMutex
-	ctx      context.Context
+	win      *mygo.Window
 	settings settings.Settings
 	// saveSettings persists preferences. Tests override it to inject a
 	// failing store instead of making the real settings.json unwritable.
 	saveSettings func(settings.Settings) error
 	// setLastFile records the last path. Tests override it to inject a failure.
 	setLastFile func(string) error
-	// saveFileDialog opens the native save dialog. Tests override it to avoid Wails context dependency.
-	saveFileDialog func(context.Context, runtime.SaveDialogOptions) (string, error)
-	dirty       bool
-	quitting    bool
-	startupFile string
+	// saveFileDialog opens the native save dialog. Tests override it so the
+	// dialog contract can be asserted without a running host.
+	saveFileDialog func(defaultFilename string) (string, error)
+	dirty          bool
+	quitting       bool
+	startupFile    string
 }
 
 // NewApp creates the application instance.
@@ -57,27 +57,48 @@ func migrateLegacyStore(src, dst string) error {
 	return os.WriteFile(dst, data, 0o644)
 }
 
-// startup saves the context, migrates legacy settings if needed, and loads persisted
-// settings. It runs before the window is shown.
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+// initState migrates the legacy user-directory store and loads the persisted
+// settings. It runs before the window is created and never creates a user
+// configuration directory.
+func (a *App) initState() settings.Settings {
 	if dst, err := settings.Path(); err == nil {
 		if configDir, err := os.UserConfigDir(); err == nil {
 			src := filepath.Join(configDir, settings.AppDir, "settings.json")
 			_ = migrateLegacyStore(src, dst)
 		}
 	}
+	s := settings.Default()
+	if loaded, err := settings.Load(); err == nil {
+		s = loaded
+	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.settings.WindowWidth >= settings.MinWindowWidth {
-		return
-	}
-	s, err := settings.Load()
-	if err != nil {
-		// Best effort: fall back to defaults.
-		s = settings.Default()
-	}
 	a.settings = s
+	a.mu.Unlock()
+	return s
+}
+
+// setWindow registers the main window once the host created it.
+func (a *App) setWindow(win *mygo.Window) {
+	a.mu.Lock()
+	a.win = win
+	a.mu.Unlock()
+}
+
+// window returns the main window, or nil before the host created it. Native
+// host APIs panic when they are called before the event loop runs, so every
+// caller guards on a non-nil window.
+func (a *App) window() *mygo.Window {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.win
+}
+
+// ShowWindow reveals the window. The frontend calls it once the real UI and
+// the persisted theme are in place, so the first visible frame is complete.
+func (a *App) ShowWindow() {
+	if win := a.window(); win != nil {
+		win.Show()
+	}
 }
 
 // LoadFile reads a file from disk and records it as the last-opened file.
@@ -165,9 +186,10 @@ func (a *App) persist(mutate func(*settings.Settings)) error {
 	return nil
 }
 
-// SetTheme persists a new theme and refreshes the window chrome. The window
-// chrome follows the persisted value: it is only updated after the save
-// succeeded.
+// SetTheme persists a new theme and syncs the native appearance source, which
+// drives the native dialogs, the window frame and the page's
+// prefers-color-scheme. The theme source is only touched once the window
+// exists, so offline unit tests never wait on the main thread.
 func (a *App) SetTheme(themeName string) error {
 	if themeName != "light" && themeName != "dark" {
 		return errors.New("SetTheme: unknown theme " + themeName)
@@ -175,10 +197,13 @@ func (a *App) SetTheme(themeName string) error {
 	if err := a.persist(func(s *settings.Settings) { s.Theme = themeName }); err != nil {
 		return err
 	}
+	if a.window() == nil {
+		return nil
+	}
 	if themeName == "light" {
-		runtime.WindowSetLightTheme(a.ctx)
+		mygo.Theme.SetSource(mygo.ThemeLight)
 	} else {
-		runtime.WindowSetDarkTheme(a.ctx)
+		mygo.Theme.SetSource(mygo.ThemeDark)
 	}
 	return nil
 }
@@ -232,10 +257,9 @@ func (a *App) SetClipboard(text string) error {
 
 // SetTitle updates the native window title.
 func (a *App) SetTitle(title string) {
-	if a.ctx == nil {
-		return
+	if win := a.window(); win != nil {
+		win.SetTitle("Mado — " + title)
 	}
-	runtime.WindowSetTitle(a.ctx, "Mado — "+title)
 }
 
 // SetStartupFile records the file path passed on the command line (used by
@@ -251,7 +275,7 @@ func (a *App) GetStartupFile() string {
 }
 
 // SetDirty records whether the editor has unsaved changes. It is used by
-// OnBeforeClose so that closing only asks for confirmation when changes
+// the close guard so that closing only asks for confirmation when changes
 // would be lost.
 func (a *App) SetDirty(dirty bool) {
 	a.mu.Lock()
@@ -260,64 +284,63 @@ func (a *App) SetDirty(dirty bool) {
 }
 
 // shouldPreventClose returns one consistent snapshot for the synchronous
-// Wails close hook.
+// close hook.
 func (a *App) shouldPreventClose() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return !a.quitting && a.dirty
 }
 
-// ForceQuit exits without any prompt. The quitting flag makes the
-// OnBeforeClose hook allow the close instead of re-emitting request-close.
+// ForceQuit exits without any prompt. The quitting flag makes the close hook
+// allow the close instead of re-emitting request-close.
 func (a *App) ForceQuit() {
 	a.mu.Lock()
 	a.quitting = true
 	a.mu.Unlock()
-	runtime.Quit(a.ctx)
-}
-
-// pickFile opens the native open-file dialog.
-func (a *App) pickFile() (string, error) {
-	f, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Open Markdown file",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Markdown", Pattern: "*.md;*.markdown;*.mdown;*.txt"},
-			{DisplayName: "All files", Pattern: "*.*"},
-		},
-	})
-	if err != nil {
-		return "", err
+	if a.window() != nil {
+		mygo.App.Quit()
 	}
-	if f == "" {
-		return "", os.ErrNotExist // user cancelled
-	}
-	return f, nil
 }
 
 // OpenFileDialog opens the native open-file dialog and returns the selected
-// path (empty string when cancelled).
+// path (empty string when cancelled or before the window exists).
 func (a *App) OpenFileDialog() string {
-	f, err := a.pickFile()
-	if err != nil {
+	if a.window() == nil {
 		return ""
 	}
-	return f
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+		Parent: a.window(),
+		Title:  "Open Markdown file",
+		Filters: []mygo.FileFilter{
+			{Name: "Markdown", Extensions: []string{"md", "markdown", "mdown", "txt"}},
+			{Name: "All files", Extensions: []string{"*"}},
+		},
+	})
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
 }
 
 // SaveFileDialog opens the native save-file dialog and returns the chosen
-// path (empty string when cancelled). Used when saving an untitled document.
+// path (empty string when cancelled or before the window exists). Used when
+// saving an untitled document.
 func (a *App) SaveFileDialog() string {
-	f, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save Markdown file",
-		DefaultFilename: "untitled.md",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Markdown", Pattern: "*.md;*.markdown;*.mdown;*.txt"},
+	if a.window() == nil {
+		return ""
+	}
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent:      a.window(),
+		Title:       "Save Markdown file",
+		DefaultPath: "untitled.md",
+		Filters: []mygo.FileFilter{
+			{Name: "Markdown", Extensions: []string{"md", "markdown", "mdown", "txt"}},
 		},
 	})
 	if err != nil {
 		return ""
 	}
-	return f
+	return path
 }
 
 // SaveHtmlFileDialog opens the native save-file dialog for exporting to HTML and
@@ -327,28 +350,26 @@ func (a *App) SaveHtmlFileDialog(defaultFilename string) (string, error) {
 	if defaultFilename == "" {
 		defaultFilename = "untitled.html"
 	}
-	opts := runtime.SaveDialogOptions{
-		Title:           "导出为 HTML",
-		DefaultFilename: defaultFilename,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "HTML 文档", Pattern: "*.html;*.htm"},
-		},
-	}
 	if a.saveFileDialog != nil {
-		return a.saveFileDialog(a.ctx, opts)
+		return a.saveFileDialog(defaultFilename)
 	}
-	f, err := runtime.SaveFileDialog(a.ctx, opts)
-	if err != nil {
-		return "", err
+	if a.window() == nil {
+		return "", nil
 	}
-	return f, nil
+	return mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent:      a.window(),
+		Title:       "导出为 HTML",
+		DefaultPath: defaultFilename,
+		Filters: []mygo.FileFilter{
+			{Name: "HTML 文档", Extensions: []string{"html", "htm"}},
+		},
+	})
 }
 
 // SaveHtmlFile writes UTF-8 HTML text atomically to path.
-func (a *App) SaveHtmlFile(path string, content string) error {
+func (a *App) SaveHtmlFile(path, content string) error {
 	if path == "" {
 		return errors.New("SaveHtmlFile: empty path")
 	}
 	return filesys.WriteFile(path, content)
 }
-

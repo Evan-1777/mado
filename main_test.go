@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,8 +11,6 @@ import (
 	"time"
 
 	"mado/internal/settings"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // TestStartupCreatesNoWelcomeDoc verifies startup is read-only: it must not
@@ -26,7 +23,7 @@ func TestStartupCreatesNoWelcomeDoc(t *testing.T) {
 	t.Setenv("APPDATA", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	NewApp().startup(context.Background())
+	NewApp().initState()
 
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -437,7 +434,7 @@ func TestGetThemeCSS(t *testing.T) {
 func TestSaveHtmlFileDialog(t *testing.T) {
 	t.Run("dialog error returns error", func(t *testing.T) {
 		app := &App{
-			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
+			saveFileDialog: func(string) (string, error) {
 				return "", errors.New("host dialog error")
 			},
 		}
@@ -452,7 +449,7 @@ func TestSaveHtmlFileDialog(t *testing.T) {
 
 	t.Run("dialog cancel returns empty path and nil error", func(t *testing.T) {
 		app := &App{
-			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
+			saveFileDialog: func(string) (string, error) {
 				return "", nil
 			},
 		}
@@ -468,8 +465,8 @@ func TestSaveHtmlFileDialog(t *testing.T) {
 	t.Run("dialog success returns chosen path and defaults empty name", func(t *testing.T) {
 		var capturedName string
 		app := &App{
-			saveFileDialog: func(ctx context.Context, opts runtime.SaveDialogOptions) (string, error) {
-				capturedName = opts.DefaultFilename
+			saveFileDialog: func(defaultFilename string) (string, error) {
+				capturedName = defaultFilename
 				return "/home/user/export.html", nil
 			},
 		}

@@ -12,6 +12,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runtimeStub } from './mygo-runtime.stub.mjs';
 
 const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(FRONTEND, 'dist');
@@ -24,9 +25,8 @@ const types = {
   '.woff': 'font/woff',
 };
 
-const startupDoc = '# 导出测试文档\\n\\n公式：$E = mc^2$\\n\\n```go\\npackage main\\n```\\n';
-const stubs = `<script>
-window.wails = { flags: { enableResize: true } };
+const startupDoc = '# 导出测试文档\n\n公式：$E = mc^2$\n\n```go\npackage main\n```\n';
+const stateScript = `<script>
 window.__exportTest = {
   themeCssCalls: [],
   dialogCalls: 0,
@@ -37,56 +37,46 @@ window.__exportTest = {
   savedPath: '',
   savedHtml: '',
 };
+// A top-level binding, visible to the stub script that follows.
 const state = window.__exportTest;
-window.go = { main: { App: {
-  ForceQuit: () => Promise.resolve(),
-  GetCSS: () => Promise.resolve('/* mado theme tokens: dark */\\nbody { color: #fff; }'),
-  GetThemeCSS: (theme) => {
+</script>`;
+const stubs = stateScript + runtimeStub(`{
+  'App.ForceQuit': () => {},
+  'App.GetCSS': () => '/* mado theme tokens: dark */\\nbody { color: #fff; }',
+  'App.GetThemeCSS': (theme) => {
     state.themeCssCalls.push(theme);
-    return Promise.resolve('/* mado theme tokens: ' + theme + ' */\\nbody { color: #242424; }');
+    return '/* mado theme tokens: ' + theme + ' */\\nbody { color: #242424; }';
   },
-  GetSettings: () => Promise.resolve({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code' }),
-  GetStartupFile: () => Promise.resolve('test.md'),
-  LoadFile: () => Promise.resolve(${JSON.stringify(startupDoc)}),
-  SaveFile: () => Promise.resolve(),
-  SaveFileDialog: () => Promise.resolve(''),
-  OpenFileDialog: () => Promise.resolve(''),
-  SaveHtmlFileDialog: (name) => {
+  'App.GetSettings': () => ({ Theme:'dark', Wrap:true, Math:true, PreviewFont:'Cascadia Code', WindowWidth:1280, WindowHeight:800, WindowMaximized:false }),
+  'App.GetStartupFile': () => 'test.md',
+  'App.LoadFile': () => ${JSON.stringify(startupDoc)},
+  'App.SaveFile': () => {},
+  'App.SaveFileDialog': () => '',
+  'App.OpenFileDialog': () => '',
+  'App.SaveHtmlFileDialog': (name) => {
     state.dialogCalls++;
     state.dialogName = name;
     if (state.failDialog) return Promise.reject(new Error('native dialog crashed'));
     if (state.cancelDialog) return Promise.resolve('');
     return Promise.resolve(state.chosenPath);
   },
-  SaveHtmlFile: (path, html) => {
+  'App.SaveHtmlFile': (path, html) => {
     state.savedPath = path;
     state.savedHtml = html;
-    return Promise.resolve();
   },
-  Render: () => Promise.resolve(
-    '<h1 id="导出测试">导出测试</h1><p>公式：<span class="math-inline" data-tex="E = mc^2">E = mc^2</span></p><div class="md-line" data-line="5"><pre class="chroma"><code>package main</code></pre></div>'
-  ),
-  SetClipboard: () => Promise.resolve(),
-  SetWindowSize: () => Promise.resolve(),
-  SetWindowMaximized: () => Promise.resolve(),
-  SetDirty: () => Promise.resolve(),
-  SetTheme: () => Promise.resolve(),
-  SetWrap: () => Promise.resolve(),
-  SetMath: () => Promise.resolve(),
-  SetPreviewFont: () => Promise.resolve(),
-  SetTitle: () => Promise.resolve(),
-} } };
-window.runtime = {
-  WindowMinimise(){}, WindowMaximise(){}, WindowUnmaximise(){},
-  WindowIsMaximised: () => Promise.resolve(false),
-  WindowGetSize: () => Promise.resolve({ w: 1280, h: 800 }),
-  WindowSetTitle(){}, WindowShow(){}, EventsOn(){}, OnFileDrop(){},
-  ClipboardSetText(){ return Promise.resolve(true); },
-  WindowSetSystemDefaultTheme(){}, WindowSetLightTheme(){}, WindowSetDarkTheme(){},
-  WindowOnThemeChanged(){}, EventsOff(){}, EventsOffAll(){}, EventsOnce(){},
-  EventsEmit(){}, WindowReload(){}, WindowReloadApp(){},
-};
-</script>`;
+  'App.Render': () =>
+    '<h1 id="导出测试">导出测试</h1><p>公式：<span class="math-inline" data-tex="E = mc^2">E = mc^2</span></p><div class="md-line" data-line="5"><pre class="chroma"><code>package main</code></pre></div>',
+  'App.SetClipboard': () => {},
+  'App.SetWindowSize': () => {},
+  'App.SetWindowMaximized': () => {},
+  'App.SetDirty': () => {},
+  'App.SetTheme': () => {},
+  'App.SetWrap': () => {},
+  'App.SetMath': () => {},
+  'App.SetPreviewFont': () => {},
+  'App.SetTitle': () => {},
+  'App.ShowWindow': () => {},
+}`);
 
 const scenario = `<script>
 (async () => {
@@ -234,6 +224,9 @@ const scenario = `<script>
       (results.every((r) => r.ok) ? ' => ALL PASS' : ' => FAIL'));
   } catch (err) {
     report('ERROR: ' + (err && err.message) +
+      ' editor=' + Boolean(document.querySelector('.cm-content')) +
+      ' mygo=' + typeof window.mygo +
+      ' dialogOpen=' + Boolean(document.getElementById('export-dialog')?.open) +
       ' dialogCalls=' + state.dialogCalls +
       ' savedPath=' + JSON.stringify(state.savedPath) +
       ' status=' + JSON.stringify(document.getElementById('status-text')?.textContent));
